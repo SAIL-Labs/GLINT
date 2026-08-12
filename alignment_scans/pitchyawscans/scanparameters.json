@@ -1,0 +1,40 @@
+{
+  "date": "06-24",
+  "iteration": 2,
+  "select_axes": [
+    "pitch",
+    "yaw"
+  ],
+  "step_size": [
+    20.0,
+    20.0
+  ],
+  "scan_range": [
+    500.0,
+    500.0
+  ],
+  "start_pos": [
+    200.0,
+    0.0
+  ],
+  "peaks": [
+    243,
+    224,
+    205
+  ],
+  "boundingvals": [
+    218,
+    267
+  ],
+  "box_halfwidth": 2,
+  "iscred1": true,
+  "year": 2026,
+  "pitch": 441.312,
+  "yaw": 293.406,
+  "fitted_pitchyaw": {
+    "pitch": 441.312,
+    "yaw": 293.406,
+    "pitch_mrad_from_scan_start": 1.264,
+    "yaw_mrad_from_scan_start": 3.431
+  }
+}

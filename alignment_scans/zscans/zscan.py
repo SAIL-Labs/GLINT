@@ -1,0 +1,323 @@
+import sys
+sys.path.append('/home/scexao/glint/control-code/')
+
+from chipMountControl import Mount
+from pyMilk.interfacing.shm import SHM
+import numpy as np
+import tqdm
+from astropy.io import fits
+import json
+
+AXES = {'pitch':1, 'roll':2, 'yaw':3, 'x':4, 'z':5, 'y':6}
+
+
+def getdark(dark_filepath: str) -> np.ndarray:
+    """
+    Get the dark frame.
+
+    Parameters
+    ----------
+    dark_filepath : str
+        Filepath to the dark frame.
+
+    Returns
+    -------
+    dark : np.ndarray
+        Dark frame.
+
+    """
+    with fits.open(dark_filepath) as hdul:
+        dark = hdul[0].data#[0, 3:-3, 3:-3]  # This crop is to remove the magic pixel
+        dark = np.array(np.mean(dark, axis = 0), dtype=float)  # Convert to float to avoid overflow
+
+    return dark
+
+def open_devices():
+    """
+    Open the APAPANE camera and MEMS.
+
+    Returns
+    -------
+    apapane : SHM
+        SHM object for the APAPANE camera.
+    mems : apiMEMsControl.MEMS
+        MEMs object.
+    """
+
+    apapane = SHM('apapane')
+    mount = Mount('/dev/serial/by-id/usb-SURUGA_SEIKI_SURUGA_SEIKI_DS102-if00-port0', 38400)
+
+    return apapane, mount
+
+
+def getdata(apapane, box,  box_halfwidth, dark, nframes = 1) -> np.ndarray:
+    """
+    Takes data from the APAPANE camera, subtracts the dark frame, and crops the data to the spectral box.
+
+    Parameters
+    ----------
+    apapane : SHM
+        SHM object for the APAPANE camera.
+    box: list
+        [top, bottom, left, right]
+    box_halfwidth : int
+        Halfwidth of the spectral box to sum over.
+    dark : np.ndarray
+        Dark frame.
+    nframes : int, optional
+        Number of frames to average over. The default is 1.
+
+    Returns
+    -------
+    data : np.ndarray
+        Data from the APAPANE camera.
+    """
+
+    top, bottom, left, right = box
+    bright = apapane.multi_recv_data(nframes) 
+    bright = np.array(bright, dtype=float)  # Convert to float to avoid overflow
+
+    # Average over the 100 frames
+    avg = np.mean(bright, axis = 0)
+    
+    avg = avg#[3:-3, 3:-3]  # This crop is to remove the magic pixel
+    data = avg - dark  # Subtract the dark frame
+    data = data[top:bottom, left:right]  # Crop to the spectral box
+    return data
+
+
+def getbox(peak, boundingvals,  box_halfwidth, iscred1):
+    """
+    Get the spectral box for the scan.
+
+    Parameters
+    ----------
+    peak : int
+        Centre of the spectral box.
+    boundingvals : list
+        The bounding values of the spectral box.
+    box_halfwidth : int
+        Halfwidth of the spectral box to sum over.
+    iscred1 : bool
+
+    Returns
+    -------
+    box : list
+        [top, bottom, left, right]
+        Top of the spectral box etc.
+    """
+
+    val1, val2 = boundingvals
+
+    # If True, the spectra are horizontal, if False, the spectra are vertical
+    if iscred1:
+        top = peak-box_halfwidth
+        bottom = peak+box_halfwidth
+        left = val1
+        right = val2
+    else:
+        left = peak-box_halfwidth
+        right = peak+box_halfwidth
+        top = val1
+        bottom = val2
+
+    box = [top, bottom, left, right]
+
+    return box
+
+
+
+
+def rasterscan(mount, dark, select_axes, mountpositions, boxes, box_halfwidth):
+    
+    # Setup ---------------------
+    axlabel1, axlabel2 = select_axes  # Label for the axis e.g. x, y
+    ax1, ax2 = AXES[axlabel1], AXES[axlabel2]  # Axis number for the mount
+    startpos1, startpos2 = mountpositions[0][0], mountpositions[1][0]  # Start position of the scan per axis
+    nsteps = [len(mountpositions[0]), len(mountpositions[1])]  # Number of steps in the scan per axis
+    photometry_scans = np.array([np.zeros(nsteps) for _ in range(3)]) # photometry_scans as size (3 x nsteps) to store the photometry data i.e. 3 photometry channels
+
+    size = nsteps[0]*nsteps[1]
+
+    pbar = tqdm.tqdm(desc="xy scan", total=size)
+
+
+
+    
+    # Move mount to start position ---------------------
+    print(f'Axis {axlabel1} position before moving: {mount.get_pos(ax1)}')
+    mount.set_pos(ax1, startpos1) 
+    while mount.in_motion(ax1) or mount.get_pos(ax1) != startpos1:
+        pass
+    print(f'Axis {axlabel1} scan start position: {mount.get_pos(ax1)}')
+
+    print(f'Axis {axlabel2} position before moving: {mount.get_pos(ax2)}')
+    mount.set_pos(ax2, startpos2) 
+    while mount.in_motion(ax2) or mount.get_pos(ax2) != startpos2:
+        pass
+    print(f'Axis {axlabel2} scan start position: {mount.get_pos(ax2)}')
+        
+
+
+    # Raster scan ---------------------
+    # First axis 
+    for i in range(nsteps[0]):
+        # Print the current position of the mount for the two axes to keep track of the scan progress
+        print(f'{axlabel1}: {mount.get_pos(ax1)} \n {axlabel2}: {mount.get_pos(ax2)}')
+
+        # Second axis
+        for j in range(nsteps[1]):
+            # Print the current position of the mount for the two axes to keep track of the scan progress
+            # print(f'{axlabel1}: {mount.get_pos(ax1)} \n {axlabel2}: {mount.get_pos(ax2)}')
+
+            # Get data for each spectral box
+            data1, data2, data3 = [getdata(apapane, box, box_halfwidth, dark, nframes = 1) for box in boxes]
+
+            # Sum the data and store in the photometry arrays
+            photometry_scans[0][i,j] = np.sum(data1)
+            photometry_scans[1][i,j] = np.sum(data2)
+            photometry_scans[2][i,j] = np.sum(data3)
+            
+            # Update axis 2
+            newpos2 = mountpositions[1,j]
+            mount.set_pos(ax2, newpos2)
+            
+
+            # Wait for the mount to stop moving and is at the correct position
+            while mount.in_motion(ax2) or mount.get_pos(ax2) != newpos2:
+                pass
+
+            pbar.update()
+
+        # Update axis 1
+        newpos1 = mountpositions[0,i]
+        mount.set_pos(ax1, newpos1)
+
+        # Return axis 2 to start position
+        mount.set_pos(ax2, startpos2)
+
+        # Wait for the mount to stop moving and is at the correct position
+        while mount.in_motion(ax1) or mount.get_pos(ax1) != newpos1 or mount.in_motion(ax2) or mount.get_pos(ax2) != startpos2:
+            pass
+    
+
+    return photometry_scans
+
+def zscan(savepath, mount, dark, select_axes, mountpositions, zpositions, boxes, box_halfwidth):
+
+    frame = 0
+    for z in zpositions:
+        print(f"Moving z axis to {z}...")
+        mount.set_pos(5, z)
+
+        while mount.in_motion(5) or mount.get_pos(5) != z:
+            pass
+
+        xyscan = rasterscan(mount, dark, select_axes, mountpositions, boxes, box_halfwidth)
+
+        savedata(savepath, xyscan, iteration, frame)
+        frame +=1 
+
+
+
+
+def savedata(path, photometry_scans, iteration, frame):
+    """
+    Save the photometry data.
+
+    Parameters
+    ----------
+    photometry_scans : list
+        List with the photometry arrays.
+    select_axes : list
+        List with the axes for this scan.
+    iteration : int
+        Iteration number.
+    """
+    for i, photometry in enumerate(photometry_scans):
+        hdu = fits.PrimaryHDU(photometry)
+        hdul = fits.HDUList([hdu])
+        hdul.writeto(f'{path}/zscan_spectra{i+1}_frame{frame}_{iteration}.fits', overwrite=True)
+
+
+
+def checksavepath(savepath):
+    # i want to make sure it doesnt already exist, and if it does, increase the iteration number saved in the json file. if it doesn exist, make a new directory for it
+    import os
+    if os.path.isdir(savepath):
+        # check if it is empty
+
+        if os.listdir(savepath):
+            print("Directory already exists and is not empty!")
+            # increase iteration number in json file
+            with open('scanparameters.json', 'r') as f:
+                params = json.load(f)
+            iteration = params['iteration']
+            iteration += 1
+            params['iteration'] = iteration
+            with open('scanparameters.json', 'w') as f:
+                json.dump(params, f)
+            print(f"Iteration number increased to {iteration}. Edit scanparameters.json directly if incorrect.")
+            sys.exit()
+            
+        else:
+            print("Directory already exists but is empty. Using this directory.")
+
+    else:
+        os.makedirs(savepath)
+        print(f"Directory {savepath} created.\n")
+
+
+
+if __name__ == "__main__":
+
+    # Load settings
+    with open('scanparameters.json', 'r') as f:
+        params = json.load(f)
+
+    # Now you can access:
+    date = params['date']
+    iteration = params['iteration']
+    select_axes = params['select_axes']
+    xystep_size = np.array(params['xystep_size'])
+    xyscan_range = np.array(params['xyscan_range'])
+    xystart_pos = np.array(params['xystart_pos'])
+
+    zstep_size = np.array(params['zstep_size'])
+    zscan_range = np.array(params['zscan_range'])
+    zstart_pos = np.array(params['zstart_pos'])
+
+    peaks = params['peaks']
+    boundingvals = params['boundingvals']
+    box_halfwidth = params['box_halfwidth']
+    iscred1 = params['iscred1']
+
+
+    # Get dark frame
+    dark_filepath = '/home/scexao/glint/alignment_scans/dark.fits'
+    dark = getdark(dark_filepath)
+
+    savepath = f'/home/scexao/glint/alignment_scans/zscans/2025/{date}/scan{iteration}'
+    checksavepath(savepath)
+
+    # Open devices
+    apapane, mount = open_devices()  
+
+    # Get the spectral boxes: [top, bottom, left, right]
+    boxes = [getbox(peak, boundingvals, box_halfwidth, iscred1) for peak in peaks]  
+
+    
+    ## XY positions
+    xysteps = np.ceil(xyscan_range/xystep_size).astype(int) + 1  # Number of steps in the scan (need to plus 1 to include the last position)
+    mountpositions = [np.linspace(xystart_pos[i], xystart_pos[i] + xyscan_range[i], xysteps[i]) for i in range(2)]
+    mountpositions = np.array(mountpositions, dtype = int)
+
+    ## Z positions
+    zsteps = np.ceil(zscan_range/zstep_size).astype(int) + 1  # Number of steps in the scan (need to plus 1 to include the last position)
+    zpositions = np.linspace(zstart_pos, zstart_pos + zscan_range, zsteps) 
+    zpositions = np.array(zpositions, dtype = int)
+
+
+    photometry_scans = zscan(savepath, mount, dark, select_axes, mountpositions, zpositions, boxes, box_halfwidth) 
+   
+    
