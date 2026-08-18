@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/home/scexao/glint/control-code/')
+sys.path.append('/home/scexao/glint/hardwarescripts/')
 
 from pyMilk.interfacing.shm import SHM
 import numpy as np

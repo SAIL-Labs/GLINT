@@ -4,6 +4,7 @@
 
 !control-code/
 !control-code/**
+control-code/command_log.txt
 
 !gui/
 !gui/**

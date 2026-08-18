@@ -15,9 +15,6 @@ This file provides funtionality to the GUI buttons. It is imported into the main
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 import functions
-# import sys
-# sys.path.append('/home/scexao/glint/alignment_scans')
-# import optimisationscansnight1
 import pistscan
 import ttscan
 import numpy as np
@@ -764,7 +761,7 @@ def parseval(value):
 def xyscan(gui):
     '''
     pseudocode:
-    1. access alignment_scans folder
+    1. access benchalignment folder
     2. get the text in the gui
     3. set the text in the .json file
     4. Set the date in json file
@@ -775,7 +772,7 @@ def xyscan(gui):
     '''    
     # Load settings
     
-    scanparams_path = "/home/scexao/glint/alignment_scans/xyscans/scanparameters.json"
+    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/scanparameters.json"
     with open(scanparams_path, 'r') as f:
         params = json.load(f)
 
@@ -800,16 +797,16 @@ def xyscan(gui):
         json.dump(params, f, indent=4)
 
     # Run the external script
-    subprocess.run(["python3", "/home/scexao/glint/alignment_scans/xyscans/xyscan.py"])
+    subprocess.run(["python3", "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/xyscan.py"])
 
     # Run the external script
-    # subprocess.run(["python3", "/home/scexao/glint/alignment_scans/xyscans/read_xyscan.py"])
+    # subprocess.run(["python3", "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/read_xyscan.py"])
 
 
 def pitchyawscan(gui):
     '''
     pseudocode:
-    1. access alignment_scans folder
+    1. access benchalignment folder
     2. get the text in the gui
     3. set the text in the .json file
     4. Set the date in json file
@@ -820,7 +817,7 @@ def pitchyawscan(gui):
     '''    
     # Load settings
     
-    scanparams_path = "/home/scexao/glint/alignment_scans/pitchyawscans/scanparameters.json"
+    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/pitchyawscans/scanparameters.json"
     with open(scanparams_path, 'r') as f:
         params = json.load(f)
 
@@ -845,13 +842,13 @@ def pitchyawscan(gui):
         json.dump(params, f, indent=4)
 
     # Run the external script
-    subprocess.run(["python3", "/home/scexao/glint/alignment_scans/pitchyawscans/pitchyawscan.py"])
+    subprocess.run(["python3", "/home/scexao/glint/benchalignment/chipmountalignment/pitchyawscans/pitchyawscan.py"])
 
 
 def tiptiltscan(gui):
     '''
     pseudocode:
-    1. access alignment_scans folder
+    1. access benchalignment folder
     2. get the text in the gui
     3. set the text in the .json file
 
@@ -861,7 +858,7 @@ def tiptiltscan(gui):
     '''    
     # Load settings
     
-    scanparams_path = "/home/scexao/glint/alignment_scans/tiptiltscans/scanparameters.json"
+    scanparams_path = "/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/scanparameters.json"
     with open(scanparams_path, 'r') as f:
         params = json.load(f)
 
@@ -881,7 +878,7 @@ def tiptiltscan(gui):
         json.dump(params, f, indent=4)
 
     # Run the external script
-    subprocess.run(["python3", "/home/scexao/glint/alignment_scans/tiptiltscans/tiptiltscan.py"])
+    subprocess.run(["python3", "/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/tiptiltscan.py"])
 
 def parse_float(value, name="value"):
     """
@@ -902,7 +899,7 @@ def parse_float(value, name="value"):
 
 def nullscan(gui):
 
-    scanparams_path = "/home/scexao/glint/alignment_scans/nullscans/scanparameters.json"
+    scanparams_path = "/home/scexao/glint/benchalignment/dmalignment/nullscans/scanparameters.json"
 
     with open(scanparams_path, 'r') as f:
         params = json.load(f)
@@ -927,7 +924,7 @@ def nullscan(gui):
         json.dump(params, f, indent=4)
 
     # Run the external script
-    subprocess.run(["python3", "/home/scexao/glint/alignment_scans/nullscans/nullscan.py"])
+    subprocess.run(["python3", "/home/scexao/glint/benchalignment/dmalignment/nullscans/nullscan.py"])
 
 
 ### dm FUNCTIONS ###

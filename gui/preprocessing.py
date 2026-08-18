@@ -71,66 +71,80 @@ def setup_spectra(gui):
     gui.graphicsView_spectra.setScene(scene)
     scene.addWidget(canvas)
 
+def load_scan_config(scanparams_path: str) -> dict:
+    """
+    Load a scan's scanparameters.json and return just its config values.
 
+    Parameters
+    ----------
+    scanparams_path : str
+        Path to a scanparameters.json file.
+
+    Returns
+    -------
+    config : dict
+        The scan's input parameters (step_size, start_pos, scan_range, ...).
+    """
+    with open(scanparams_path, 'r') as f:
+        params = json.load(f)
+
+    return params.get('config', params)
 
 
 def setup_alignmentparams(gui):
-    scanparams_path = "/home/scexao/glint/alignment_scans/xyscans/scanparameters.json"
-    with open(scanparams_path, 'r') as f:
-        params = json.load(f)
+    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/scanparameters.json"
+    config = load_scan_config(scanparams_path)
+
+    
  
     #xy
-    step_size = params['step_size']
+    step_size = config['step_size']
     gui.text_stepsize_xy.setText(str(step_size))
-    start_pos = params['start_pos']
+    start_pos = config['start_pos']
     gui.text_startpos_xy.setText(str(start_pos))
-    scan_range = params['scan_range']
+    scan_range = config['scan_range']
     gui.text_range_xy.setText(str(scan_range))
 
-    scanparams_path = "/home/scexao/glint/alignment_scans/pitchyawscans/scanparameters.json"
-    with open(scanparams_path, 'r') as f:
-        params = json.load(f)
+    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/pitchyawscans/scanparameters.json"
+    config = load_scan_config(scanparams_path)
 
     #pitchyaw
-    step_size = params['step_size']
+    step_size = config['step_size']
     gui.text_stepsize_pitchyaw.setText(str(step_size))
-    start_pos = params['start_pos']
+    start_pos = config['start_pos']
     gui.text_startpos_pitchyaw.setText(str(start_pos))
-    scan_range = params['scan_range']
+    scan_range = config['scan_range']
     gui.text_range_pitchyaw.setText(str(scan_range))
 
-    scanparams_path = "/home/scexao/glint/alignment_scans/zscans/scanparameters.json"
-    with open(scanparams_path, 'r') as f:
-        params = json.load(f)
+    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/zscans/scanparameters.json"
+    config = load_scan_config(scanparams_path)
     #z
-    step_size = params['zstep_size']
+    step_size = config['zstep_size']
     gui.text_stepsize_z.setText(str(step_size))
-    start_pos = params['zstart_pos']
+    start_pos = config['zstart_pos']
     gui.text_startpos_z.setText(str(start_pos))
-    scan_range = params['zscan_range']
+    scan_range = config['zscan_range']
     gui.text_range_z.setText(str(scan_range))
 
-    scanparams_path = "/home/scexao/glint/alignment_scans/tiptiltscans/scanparameters.json"
-    with open(scanparams_path, 'r') as f:
-        params = json.load(f)
+    scanparams_path = "/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/scanparameters.json"
+    config = load_scan_config(scanparams_path)
 
     #tiptilt
-    step_size = params['step_size']
+    step_size = config['step_size']
     gui.text_stepsize_tiptilt.setText(str(step_size))
-    start_pos = params['start_pos']
+    start_pos = config['start_pos']
     gui.text_startpos_tiptilt.setText(str(start_pos))
-    scan_range = params['scan_range']
+    scan_range = config['scan_range']
     gui.text_range_tiptilt.setText(str(scan_range))
 
-    scanparams_path = "/home/scexao/glint/alignment_scans/nullscans/scanparameters.json"
-    with open(scanparams_path, 'r') as f:
-        params = json.load(f)
+    scanparams_path = "/home/scexao/glint/benchalignment/dmalignment/nullscans/scanparameters.json"
+    config = load_scan_config(scanparams_path)
 
     #null
-    step_size = params['step_size']
+    step_size = config['step_size']
     gui.text_stepsize_null.setText(str(step_size))
-    start_pos = params['start_pos']
+    start_pos = config['start_pos']
     gui.text_startpos_null.setText(str(start_pos))
-    scan_range = params['scan_range']
+    scan_range = config['scan_range']
     gui.text_range_null.setText(str(scan_range))
     

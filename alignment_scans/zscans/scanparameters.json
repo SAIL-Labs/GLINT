@@ -1,1 +1,0 @@
-{"date": "05-05", "iteration": 3, "select_axes": ["x", "y"], "zstep_size": 50, "zscan_range": 50, "zstart_pos": 1700,"xystep_size": [2, 2], "xyscan_range": [100, 100], "xystart_pos": [2990, 3370], "peaks": [25, 57, 88], "boundingvals": [40, 110], "box_halfwidth": 3, "iscred1": false}

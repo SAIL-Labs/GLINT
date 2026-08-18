@@ -1,1 +1,0 @@
-{"date": "07-24", "iteration": 6, "select_axes": ["x", "y"], "step_size": [5, 5], "scan_range": [100, 100], "start_pos": [2990, 3390], "rollstart": 900, "rollrange": 1100, "rollstepsize": 100, "peaks": [22, 54, 85], "boundingvals": [25, 125], "box_halfwidth": 2, "iscred1": false}

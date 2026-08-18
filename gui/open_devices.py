@@ -3,7 +3,7 @@ Open the MEMs and mount.
 '''
 
 import sys
-sys.path.append('/home/scexao/glint/control-code')
+sys.path.append('/home/scexao/glint/hardwarescripts')
 import shmDMcontrol
 import chipMountControl 
 from pyMilk.interfacing.shm import SHM
