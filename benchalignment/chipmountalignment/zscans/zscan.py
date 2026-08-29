@@ -1,7 +1,6 @@
 import sys
-sys.path.append('/home/scexao/glint/control-code/')
 
-from chipMountControl import Mount
+from hardware_control.mountcontrol.chipMountControl import Mount
 from pyMilk.interfacing.shm import SHM
 import numpy as np
 import tqdm

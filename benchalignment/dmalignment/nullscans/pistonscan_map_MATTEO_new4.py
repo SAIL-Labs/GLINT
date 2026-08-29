@@ -36,9 +36,6 @@ where ACTIVE_SEGMENT is 11/20/31 for the one-active-at-a-time modes, and -1 for
 all-injected-segments-simultaneously mode.
 """
 
-import sys
-sys.path.append('/home/scexao/glint/control-code/')
-
 import os
 import time
 import shutil
@@ -48,7 +45,7 @@ import numpy as np
 from astropy.io import fits
 import tqdm
 
-import shmDMcontrol
+from hardware_control.dmcontrol import shmDMcontrol
 from pyMilk.interfacing.shm import SHM
 
 

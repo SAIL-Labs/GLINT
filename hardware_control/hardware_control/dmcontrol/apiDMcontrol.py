@@ -1,8 +1,9 @@
-import sys
-sys.path.append('/home/scexao/glint/bmc/setup_files') # All of these files are in /home/scexao/src/hardwaresecrets/drivers/bmc111
+from pathlib import Path
 
-import bmc
+from . import bmc
 import numpy as np
+
+FLATS_DIR = Path(__file__).resolve().parent / 'flats'
 
 DM_Piston = bmc.DM_Piston
 DM_XTilt = bmc.DM_XTilt
@@ -74,15 +75,12 @@ class DM():
         return self.dm.get_segment_range(segment, axis, piston, xTilt, yTilt, applyOffsets)
     
     def flatten(self) -> None:
-        flatpath = '/home/scexao/glint/control-code/'
-        flat = np.loadtxt(flatpath+'32AW038_1500nm.txt', dtype=float)
+        flat = np.loadtxt(FLATS_DIR / '32AW038_1500nm.txt', dtype=float)
         print('Flattening DM')
         self.send_data(flat)
 
     def select_flatten(self, wavelength = 1500) -> None:
-
-        flatpath = '/home/scexao/glint/control-code/'
-        flat = np.loadtxt(f'{flatpath}32AW038_{wavelength}nm.txt', dtype=float)
+        flat = np.loadtxt(FLATS_DIR / f'32AW038_{wavelength}nm.txt', dtype=float)
         self.send_data(flat)
 
     def sendzeros(self) -> None:

@@ -33,13 +33,10 @@ If the observed pattern is mirrored, flip CLOCKWISE_FROM_MINUS_X_SIGN.
 If the beams go inward instead of outward, set RADIAL_DIRECTION = 'inward'.
 """
 
-import sys
-sys.path.append('/home/scexao/glint/control-code/')
-
 import time
 import numpy as np
 
-import shmDMcontrol
+from hardware_control.dmcontrol import shmDMcontrol
 
 
 # =============================================================================

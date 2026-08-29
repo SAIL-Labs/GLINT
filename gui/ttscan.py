@@ -1,6 +1,3 @@
-import sys
-sys.path.append('/home/scexao/glint/hardwarescripts/')
-
 from pyMilk.interfacing.shm import SHM
 import numpy as np
 from astropy.io import fits

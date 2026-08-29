@@ -36,9 +36,6 @@ The solution FITS file contains extension PISTON_SOLUTION with columns:
 A JSON sidecar is also saved with the same solution and diagnostic information.
 """
 
-import sys
-sys.path.append('/home/scexao/glint/control-code/')
-
 import os
 import json
 import time
@@ -51,7 +48,7 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 import tqdm
 
-import shmDMcontrol
+from hardware_control.dmcontrol import shmDMcontrol
 from pyMilk.interfacing.shm import SHM
 
 

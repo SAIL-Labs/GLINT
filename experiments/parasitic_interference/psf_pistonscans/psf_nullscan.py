@@ -1,9 +1,7 @@
-import sys
-sys.path.append('/home/scexao/glint/control-code/')
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
-import shmDMcontrol
+from hardware_control.dmcontrol import shmDMcontrol
 from pyMilk.interfacing.shm import SHM
 import time
 

@@ -1,17 +1,15 @@
 from serial import Serial
 import os
+from pathlib import Path
 from datetime import datetime
 
 class Mount:
 
     def __init__(self, port, baudrate) -> None:
-        # self.s = Serial('/dev/ttyUSB2')#, baudrate=38400) 
+        # self.s = Serial('/dev/ttyUSB2')#, baudrate=38400)
         self.s = Serial(port, baudrate)
 
-        # path = os.getcwd()
-        path = '/home/scexao/glint/hardwarescripts'
-        filename = 'command_log.txt'
-        file_path = f"{path}/{filename}"
+        file_path = Path(__file__).resolve().parent / 'command_log.txt'
 
         self.f = open(file_path, "a")
     

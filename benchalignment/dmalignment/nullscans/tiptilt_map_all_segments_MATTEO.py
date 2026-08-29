@@ -23,9 +23,6 @@ Default save location:
 No scanparameters.json is read or written.
 """
 
-import sys
-sys.path.append('/home/scexao/glint/control-code/')
-
 import os
 import time
 import shutil
@@ -35,7 +32,7 @@ import numpy as np
 from astropy.io import fits
 import tqdm
 
-import shmDMcontrol
+from hardware_control.dmcontrol import shmDMcontrol
 from pyMilk.interfacing.shm import SHM
 
 

@@ -1,8 +1,7 @@
 import sys
-sys.path.append('/home/scexao/glint/hardwarescripts/')
 
 # import apiMEMsControl
-import shmDMcontrol
+from hardware_control.dmcontrol import shmDMcontrol
 from pyMilk.interfacing.shm import SHM
 import matplotlib.pyplot as plt
 import numpy as np

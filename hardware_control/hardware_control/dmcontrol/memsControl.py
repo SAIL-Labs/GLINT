@@ -1,13 +1,18 @@
-from pyMilk.interfacing.shm import SHM  
-import numpy as np  
+# import ImageStreamIOWrap
+from pathlib import Path
+
+from pyMilk.interfacing.shm import SHM
+import numpy as np
+
+FLATS_DIR = Path(__file__).resolve().parent / 'flats'
 
 
-class DM():
+class MEMS():
     def __init__(self) -> None:
         self.dmvolt = SHM('dmvolt')  
         self.dmptt = SHM('dmptt') 
     
-    def set_segment(self, segment:int, piston:float, tip:float, tilt:float) -> None:
+    def set_ptt(self, segment:int, piston:float, tip:float, tilt:float) -> None:
         
         data = self.dmptt.get_data()
 
@@ -32,7 +37,8 @@ class DM():
 
         
         self.dmvolt.set_data(updated_data)
-
+    
+    
     def set_ptt_all(self, piston, tip, tilt) -> None:
         # make an ssertion statement of the datatype, range and shape of pisotn, tip, tilt
 
@@ -62,13 +68,13 @@ class DM():
         return self.dmptt.get_data()
     
 
-    def sendzeros(self) -> None:
-        flat = np.zeros(111, dtype = 'float32')
-        self.dmvolt.set_data(flat)
+    def flatten_ptt(self) -> None:
+        flat = np.zeros(111)
+        self.dmptt.set_data(flat)
         
-    def flatten(self) -> None:
+    def flatten_volt(self) -> None:
 
-        flat = np.loadtxt('32AW038_1500nm.txt', dtype = 'float32')
+        flat = np.loadtxt(FLATS_DIR / '32AW038_1500nm.txt')
         
         self.dmvolt.set_data(flat)
     
@@ -85,6 +91,10 @@ class DM():
         volt = 0.5*np.random.rand(111)
         self.dmvolt.set_data(volt)
     
+    
+    
 
-# if __name__ == "__main__":
-#     dm = DM()
+if __name__ == "__main__":
+    dm = MEMS()
+
+    

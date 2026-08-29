@@ -1,7 +1,6 @@
 import sys
-sys.path.append('/home/scexao/glint/control-code/')
 
-import shmDMcontrol
+from hardware_control.dmcontrol import shmDMcontrol
 from pyMilk.interfacing.shm import SHM
 import numpy as np
 from astropy.io import fits

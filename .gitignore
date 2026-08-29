@@ -1,7 +1,8 @@
-# Byte-compiled / caches
+# Byte-compiled / caches / build artifacts
 __pycache__/
 *.pyc
 .DS_Store
+*.egg-info/
 
 # Scan/experiment data and outputs -- not source code.
 # The repo has ~115 .py files and tens of thousands of these; only source
