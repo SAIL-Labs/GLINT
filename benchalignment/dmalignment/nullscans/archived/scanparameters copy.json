@@ -1,0 +1,1 @@
+{"date": "05-13", "iteration": 10, "numavg": 10, "step_size": 1, "scan_range": 1, "start_pos": -0.5, "nullpeaks": [147, 241, 367], "tips": {"11": 0.325, "20": -0.077, "31": -0.362}, "tilts": {"11": -0.332, "20": -0.446, "31": -0.199}, "boundingvals": [10, 70], "box_halfwidth": 3, "iscred1": false}

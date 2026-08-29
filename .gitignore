@@ -1,69 +1,39 @@
-*
-!.gitignore
-!README.md
+# Byte-compiled / caches
+__pycache__/
+*.pyc
+.DS_Store
 
-!control-code/
-!control-code/**
-control-code/command_log.txt
+# Scan/experiment data and outputs -- not source code.
+# The repo has ~115 .py files and tens of thousands of these; only source
+# and small config/reference files should ever be tracked.
+*.fits
+*.npz
+*.npy
+*.mat
+*.zip
+*.mp4
+*.gif
+*.png
+*.log
 
-!gui/
-!gui/**
+# Known large data/archive directories
+/_dataarchive/
+/_codearchive/
+**/scanoutput/
+**/scanoutputs/
+**/live_outputs/
+hardwarescripts/bmc/mapping_investigation/data/
+hardware_control/examples/mapping_investigation/data/
+hardwarescripts/command_log.txt
+hardware_control/hardware_control/mountcontrol/command_log.txt
+experiments/turbsim2wfe/simple-test/data/
 
-!bmc/
-!bmc/setupfiles/
+# Dated per-run scan output dirs (e.g. tiptiltscans/2026/05-20/scan3/), which
+# hold result data (json/fits/txt) rather than source, regardless of whether
+# they sit under a "scanoutput(s)" folder or directly under the scan-type dir.
+**/[0-9][0-9][0-9][0-9]/[0-9][0-9]-[0-9][0-9]/
 
-!hotspotalignment/
-!hotspotalignment/jacobian.py
-!hotspotalignment/response_matrix.npy
-!hotspotalignment/autoalign.py
-!hotspotalignment/centroid.py
-!hotspotalignment/find_psf.py
-!hotspotalignment/findhotspot.py
-
-!fringe_tracking/
-!fringe_tracking/**
-fringe_tracking/simple-test/data/
-
-!tiptiltgenerator-scexaodm/
-!tiptiltgenerator-scexaodm/**
-
-
-# Being specific because the data for these scans are being stored in these files. Need to disentangle data from code.
-
-!alignment_scans/
-!alignment_scans/nullscans/
-!alignment_scans/nullscans/scanparameters.json
-!alignment_scans/nullscans/nullscan.py
-!alignment_scans/nullscans/read_nullscan_fit.py
-
-!alignment_scans/tiptiltscans/
-!alignment_scans/tiptiltscans/scanparameters.json
-!alignment_scans/tiptiltscans/tiptiltscan.py
-!alignment_scans/tiptiltscans/read_tiptiltscan.py
-
-!alignment_scans/xyscans/
-!alignment_scans/xyscans/scanparameters.json
-!alignment_scans/xyscans/xyscan.py
-!alignment_scans/xyscans/read_xyscan.py
-
-!alignment_scans/pitchyawscans/
-!alignment_scans/pitchyawscans/scanparameters.json
-!alignment_scans/pitchyawscans/pitchyawscan.py
-!alignment_scans/pitchyawscans/read_pitchyawscan.py
-
-!alignment_scans/zscans/
-!alignment_scans/zscans/scanparameters.json
-!alignment_scans/zscans/zscan.py
-!alignment_scans/zscans/makegif.py
-
-!alignment_scans/rollscans/
-!alignment_scans/rollscans/scanparameters.json
-!alignment_scans/rollscans/rollscan.py
-
-!alignment_scans/amplitudescans/
-!alignment_scans/amplitudescans/**
-alignment_scans/amplitudescans/2025/
-
-
-
-
+# Investigation notebook with embedded image-sequence output (35MB of pixels,
+# not code).
+hardwarescripts/bmc/mapping_investigation/actuator_gif.ipynb
+hardware_control/examples/mapping_investigation/actuator_gif.ipynb

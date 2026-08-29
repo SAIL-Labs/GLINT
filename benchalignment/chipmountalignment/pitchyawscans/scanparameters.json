@@ -1,0 +1,42 @@
+{
+  "config": {
+    "select_axes": [
+      "pitch",
+      "yaw"
+    ],
+    "step_size": [
+      1.0,
+      1.0
+    ],
+    "scan_range": [
+      1.0,
+      1.0
+    ],
+    "start_pos": [
+      441,
+      293
+    ],
+    "peaks": [
+      243,
+      224,
+      205
+    ],
+    "boundingvals": [
+      218,
+      267
+    ],
+    "box_halfwidth": 2,
+    "iscred1": true
+  },
+  "state": {
+    "date": "08-18",
+    "year": 2026,
+    "iteration": 1,
+    "last_fit": {
+      "pitch": 441.109,
+      "yaw": 293.635,
+      "pitch_mrad_from_scan_start": 0.001,
+      "yaw_mrad_from_scan_start": 0.007
+    }
+  }
+}

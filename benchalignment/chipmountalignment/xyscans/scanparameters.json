@@ -1,0 +1,65 @@
+{
+  "config": {
+    "select_axes": [
+      "x",
+      "y"
+    ],
+    "step_size": [
+      2.0,
+      2.0
+    ],
+    "scan_range": [
+      100.0,
+      100.0
+    ],
+    "start_pos": [
+      3010.0,
+      3425.0
+    ],
+    "peaks": [
+      243,
+      224,
+      205
+    ],
+    "boundingvals": [
+      218,
+      267
+    ],
+    "box_halfwidth": 2,
+  },
+  "state": {
+    "date": "06-24",
+    "year": 2026,
+    "iteration": 107,
+    "last_fit": {
+      "x": 3055.865,
+      "y": 3470.559,
+      "xy_centroids": {
+        "1": {
+          "x": 3057.189,
+          "y": 3467.692,
+          "method_used": "centroid",
+          "pixel_x_index": 23.59443496541878,
+          "pixel_y_index": 21.346063386878686,
+          "peak_value": 55351.74508190155
+        },
+        "2": {
+          "x": 3052.846,
+          "y": 3472.652,
+          "method_used": "centroid",
+          "pixel_x_index": 21.42289139469851,
+          "pixel_y_index": 23.825789685277726,
+          "peak_value": 141451.14805793762
+        },
+        "3": {
+          "x": 3057.56,
+          "y": 3471.332,
+          "method_used": "centroid",
+          "pixel_x_index": 23.779971449954672,
+          "pixel_y_index": 23.166119994189096,
+          "peak_value": 106824.3369588852
+        }
+      }
+    }
+  }
+}

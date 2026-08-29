@@ -1,0 +1,42 @@
+/home/scexao/glint/
+├── Benchalignment/
+│   ├── Hotspotalignment/
+│   │   ├── Autoalign.py
+│   │   └── …
+│   ├── Dmalignment/
+│   │   ├── Nullscans/
+│   │   │   ├── Nullscan.py
+│   │   │   ├── Readnullscan.py
+│   │   │   └── Scanoutputs/
+│   │   └── Tiptiltscans/
+│   │       └── …
+│   ├── Mountalignment/
+│   │   ├── Pitchyawscans/
+│   │   │   └── …
+│   │   ├── Rollscans/
+│   │   │   └── …
+│   │   ├── Xyscans/
+│   │   │   └── …
+│   │   └── Zscans/
+│   │       └── …
+│   ├── spectraalignment/
+│   ├── psfpupilframes/
+│   └── Dark.fits
+├── Gui/
+│   └── …
+├── Hardwarescripts/
+│   ├── Dmcontrol/
+│   │   ├── apidmcontrol.py
+│   │   ├── shmdmcontrol.py
+│   │   └── bmc/
+│   │       ├── setup_files/
+│   │       └── …
+│   └── mountcontrol/
+│       └── mountcontrol.py
+├── Softwarescripts/
+│   ├── tiptiltscexaodm  (e.g.)
+│   └── livestream
+└── Experiments/
+    ├── parasiticinterference
+    ├── Turbsim2wfe
+    └── amplitudescans
