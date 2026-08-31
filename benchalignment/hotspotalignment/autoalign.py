@@ -20,7 +20,7 @@ def load_RM(filename="response_matrix.npy"):
         return np.load(filename)
     else:
         print(f"Response matrix file {filename} not found.")
-        return None
+        return Nonealignment
 
 
 # ============================
@@ -76,8 +76,8 @@ def mainloop(update_RM=False, RM_filename="response_matrix.npy"):
     # Load goal coordinates
     # goal_bright = fits.getdata('/home/scexao/glint/psf_pupil_alignment/20251021/psf_zerovolts.fits')
     # goal_dark = fits.getdata('/home/scexao/glint/psf_pupil_alignment/20251021/psf_dark.fits')
-    goal_bright = fits.getdata('/home/scexao/glint/psf_pupil_alignment/20260602/ir_irisclosed_psf_zerodm.fits')
-    goal_dark = fits.getdata('/home/scexao/glint/psf_pupil_alignment/20260602/dark_psf.fits')
+    goal_bright = fits.getdata('/home/scexao/glint/benchalignment/psfpupilframes/20260602/ir_irisclosed_psf_zerodm.fits')
+    goal_dark = fits.getdata('/home/scexao/glint/benchalignment/psfpupilframes/20260602/dark_psf.fits')
     goal_pos = get_hotspot(goal_bright, goal_dark, nframes=nframes_avg, do_plot=plot_updates)
     print(f"\nGoal pos: {goal_pos}\n")
 

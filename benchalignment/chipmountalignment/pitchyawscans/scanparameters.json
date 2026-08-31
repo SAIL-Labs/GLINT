@@ -5,16 +5,16 @@
       "yaw"
     ],
     "step_size": [
-      1.0,
-      1.0
+      25.0,
+      25.0
     ],
     "scan_range": [
-      1.0,
-      1.0
+      500.0,
+      500.0
     ],
     "start_pos": [
-      441,
-      293
+      200.0,
+      0.0
     ],
     "peaks": [
       243,
@@ -29,14 +29,14 @@
     "iscred1": true
   },
   "state": {
-    "date": "08-18",
+    "date": "08-29",
     "year": 2026,
-    "iteration": 1,
+    "iteration": 5,
     "last_fit": {
-      "pitch": 441.109,
-      "yaw": 293.635,
-      "pitch_mrad_from_scan_start": 0.001,
-      "yaw_mrad_from_scan_start": 0.007
+      "pitch": 450.378,
+      "yaw": 318.054,
+      "pitch_mrad_from_scan_start": 1.311,
+      "yaw_mrad_from_scan_start": 3.719
     }
   }
 }

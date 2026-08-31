@@ -783,14 +783,11 @@ def xyscan(gui):
     if None in (step_size, start_pos, scan_range):
         return
 
-    # Get the current UTC year and date
-    # Get current UTC time
-    now = datetime.now(timezone.utc)
-    params['year'] = now.year
-    params['date'] = now.strftime("%m-%d")  # e.g., "10-29"
-    params['step_size'] = step_size
-    params['scan_range'] = scan_range
-    params['start_pos'] = start_pos
+    # Scan inputs live under "config"; "state" (date/year/iteration) is
+    # read and written automatically by xyscan.py itself.
+    params['config']['step_size'] = step_size
+    params['config']['scan_range'] = scan_range
+    params['config']['start_pos'] = start_pos
 
     # Save updated parameters
     with open(scanparams_path, 'w') as f:
@@ -828,14 +825,11 @@ def pitchyawscan(gui):
     if None in (step_size, start_pos, scan_range):
         return
 
-    # Get the current UTC year and date
-    # Get current UTC time
-    now = datetime.now(timezone.utc)
-    params['year'] = now.year
-    params['date'] = now.strftime("%m-%d")  # e.g., "10-29"
-    params['step_size'] = step_size
-    params['scan_range'] = scan_range
-    params['start_pos'] = start_pos
+    # Scan inputs live under "config"; "state" (date/year/iteration) is
+    # read and written automatically by pitchyawscan.py itself.
+    params['config']['step_size'] = step_size
+    params['config']['scan_range'] = scan_range
+    params['config']['start_pos'] = start_pos
 
     # Save updated parameters
     with open(scanparams_path, 'w') as f:
@@ -914,10 +908,11 @@ def nullscan(gui):
         print("Aborting nullscan due to invalid input.")
         return
 
-    # Update params
-    params['step_size'] = round(step_size, 3)
-    params['scan_range'] = round(scan_range, 3)
-    params['start_pos'] = round(start_pos, 3)
+    # Update params (scan inputs live under "config"; "state" is read and
+    # written automatically by nullscan.py itself)
+    params['config']['step_size'] = round(step_size, 3)
+    params['config']['scan_range'] = round(scan_range, 3)
+    params['config']['start_pos'] = round(start_pos, 3)
 
     # Save updated parameters
     with open(scanparams_path, 'w') as f:

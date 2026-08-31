@@ -271,7 +271,7 @@ if __name__ == '__main__':
 
 
     # Get dark frame
-    dark_filepath = '/home/scexao/glint/benchalignment/dmalignment/dark.fits'
+    dark_filepath = '/home/scexao/glint/benchalignment/dark.fits'
     dark = getdark(dark_filepath)
 
     
