@@ -6,15 +6,18 @@ from pyMilk.interfacing.shm import SHM
 import time
 import os
 import matplotlib.pyplot as plt
+import glint_paths
 
 # ============================
 # --- Response Matrix IO ----
 # ============================
-def save_RM(R, filename="response_matrix.npy"):
+DEFAULT_RM_FILENAME = str(glint_paths.data_dir("benchalignment", "hotspotalignment") / "response_matrix.npy")
+
+def save_RM(R, filename=DEFAULT_RM_FILENAME):
     np.save(filename, R)
     print(f"Response matrix saved to {filename}.")
 
-def load_RM(filename="response_matrix.npy"):
+def load_RM(filename=DEFAULT_RM_FILENAME):
     if os.path.exists(filename):
         print(f"Loaded response matrix from {filename}.")
         return np.load(filename)
@@ -27,13 +30,13 @@ def load_RM(filename="response_matrix.npy"):
 # ============================
 # --- Main Loop -------------
 # ============================
-def mainloop(update_RM=False, RM_filename="response_matrix.npy"):
+def mainloop(update_RM=False, RM_filename=DEFAULT_RM_FILENAME):
     """
     Aligns the PSF to a goal position using a feedback loop based on a response matrix.
     """
     # Load goal coordinates
-    goal_bright = fits.getdata('/home/scexao/glint/psf_pupil_alignment/20251021/psf_zerovolts.fits')
-    goal_dark = fits.getdata('/home/scexao/glint/psf_pupil_alignment/20251021/psf_dark.fits')
+    goal_bright = fits.getdata(str(glint_paths.DATA_ROOT / 'benchalignment' / 'psfpupilframes' / '20251021' / 'psf_zerovolts.fits'))
+    goal_dark = fits.getdata(str(glint_paths.DATA_ROOT / 'benchalignment' / 'psfpupilframes' / '20251021' / 'psf_dark.fits'))
     goal_pos = get_hotspot(goal_bright, goal_dark)
     print(f"\nGoal pos: {goal_pos}\n")
 
@@ -249,7 +252,7 @@ def get_hotspot(brightframe= None, dark = None):
     
     if dark is None:
         try:
-            dark = fits.getdata('dark.fits')
+            dark = fits.getdata(str(glint_paths.data_dir("benchalignment", "hotspotalignment") / "dark.fits"))
         except Exception as e:
             print("Need to save a dark frame to current directory.")
         

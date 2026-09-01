@@ -5,10 +5,11 @@ from astropy.io import fits
 from tqdm import tqdm
 import re
 from scipy.optimize import curve_fit
+import glint_paths
 
 # -------- CONFIG --------
 
-PARENT_DIR = '/home/scexao/glint/alignment_scans/amplitudescans/2025/08-22/scan1'
+PARENT_DIR = str(glint_paths.DATA_ROOT / 'alignment_scans' / 'amplitudescans' / '2025' / '08-22' / 'scan1')
 BASELINE = ["11", "31"]
 TOP =57          # Top row for spectral region
 BOTTOM = 59     # Bottom row for spectral region

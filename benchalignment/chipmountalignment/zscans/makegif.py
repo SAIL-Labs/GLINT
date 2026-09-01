@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 import imageio
 import os
+import glint_paths
 
 # Load settings
 with open('scanparameters.json', 'r') as f:
@@ -20,7 +21,7 @@ zstep_size = np.array(params['zstep_size'])
 zscan_range = 350#np.array(params['zscan_range'])
 zstart_pos = 1750#np.array(params['zstart_pos'])
 
-path = f'/home/scexao/glint/alignment_scans/zscans/2025/{date}/scan{iteration}/'
+path = f'{glint_paths.data_dir("alignment_scans", "zscans", "2025", date, f"scan{iteration}")}/'
 os.makedirs(f'{path}imgs', exist_ok=True)
 
 zsteps = np.ceil(zscan_range / zstep_size).astype(int) + 1

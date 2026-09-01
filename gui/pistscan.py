@@ -5,6 +5,7 @@ import time
 import tqdm
 # from datetime import datetime
 import csv
+import glint_paths
 
 
 # ------------------------------------------------------------
@@ -209,7 +210,7 @@ def saveframe(apapane, baseline, pist, t):
     # Save the frame
     hdu = fits.PrimaryHDU(frame)
     hdul = fits.HDUList([hdu])
-    hdul.writeto(f'/home/scexao/glint/frame_baseline{seg1}:{seg2}_pist{pist}_{t}.fits', overwrite=True)
+    hdul.writeto(str(glint_paths.data_dir('gui', 'pistscans') / f'frame_baseline{seg1}:{seg2}_pist{pist}_{t}.fits'), overwrite=True)
 
 
 def pistonscan(mems, cameras):
@@ -226,7 +227,7 @@ def pistonscan(mems, cameras):
         tilt = [TILT[seg1], TILT[seg2]]
         
          # Open a CSV file to log the data
-        path = '/home/scexao/glint/'
+        path = str(glint_paths.data_dir('gui', 'pistscans'))
 
         tstart = time.time()
 

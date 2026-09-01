@@ -1,5 +1,4 @@
 import sys
-sys.path.append('/home/scexao/glint/bmc/setup_files/')
 
 import bmc
 from datetime import datetime 

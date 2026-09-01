@@ -1,5 +1,4 @@
 import sys
-sys.path.append('/home/scexao/glint/control-code/')
 
 # import apiMEMsControl
 import shmDMcontrol
@@ -10,6 +9,7 @@ import time
 import tqdm
 import json
 import os
+import glint_paths
 
 
 
@@ -228,10 +228,10 @@ if __name__ == '__main__':
 
 
     # Get dark frame
-    dark_filepath = '/home/scexao/glint/alignment_scans/dark.fits'
+    dark_filepath = str(glint_paths.DATA_ROOT / 'alignment_scans' / 'dark.fits')
     dark = getdark(dark_filepath)
 
-    savepath = f'/home/scexao/glint/alignment_scans/tiptiltscans/2026/{date}/scan{iteration}'
+    savepath = str(glint_paths.data_dir('alignment_scans', 'tiptiltscans', '2026', date, f'scan{iteration}'))
     checksavepath(savepath)
 
     # Get the spectral boxes: [top, bottom, left, right]
@@ -282,7 +282,7 @@ if __name__ == '__main__':
             # # Save data
             # hdu = fits.PrimaryHDU(scanned_img)
             # hdul = fits.HDUList([hdu])
-            # hdul.writeto(f'/home/scexao/glint/alignment_scans/tiptiltscans/2025/{date}/scan{iteration}/tiptilt_seg{segment}_{iteration}.fits', overwrite=True)
+            # hdul.writeto(f'{glint_paths.DATA_ROOT}/alignment_scans/tiptiltscans/2025/{date}/scan{iteration}/tiptilt_seg{segment}_{iteration}.fits', overwrite=True)
 
 
         except Exception as e:

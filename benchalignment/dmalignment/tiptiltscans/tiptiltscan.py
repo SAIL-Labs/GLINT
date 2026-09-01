@@ -12,9 +12,10 @@ import json
 import os
 import subprocess
 from datetime import datetime, timezone
+import glint_paths
 
 
-PARAM_FILE = '/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/scanparameters.json'
+PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'tiptiltscans' / 'scanparameters.json')
 
 def load_params():
     with open(PARAM_FILE, 'r') as f:
@@ -249,7 +250,7 @@ if __name__ == '__main__':
     save_params(params)
 
     # Build base directory up to the date folder
-    base_dir = f'/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/{year}/{date}'
+    base_dir = str(glint_paths.data_dir('benchalignment', 'dmalignment', 'tiptiltscans', year, date))
 
     # This may update iteration in the JSON
     savepath = checksavepath(base_dir)
@@ -271,7 +272,7 @@ if __name__ == '__main__':
 
 
     # Get dark frame
-    dark_filepath = '/home/scexao/glint/benchalignment/dark.fits'
+    dark_filepath = str(glint_paths.CALIBRATION_ROOT / 'dark.fits')
     dark = getdark(dark_filepath)
 
     
@@ -326,7 +327,7 @@ if __name__ == '__main__':
             # # Save data
             # hdu = fits.PrimaryHDU(scanned_img)
             # hdul = fits.HDUList([hdu])
-            # hdul.writeto(f'/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/2025/{date}/scan{iteration}/tiptilt_seg{segment}_{iteration}.fits', overwrite=True)
+            # hdul.writeto(f'{glint_paths.DATA_ROOT}/benchalignment/dmalignment/tiptiltscans/2025/{date}/scan{iteration}/tiptilt_seg{segment}_{iteration}.fits', overwrite=True)
 
 
         except Exception as e:
@@ -340,7 +341,7 @@ if __name__ == '__main__':
     # --- Run tip-tilt analysis automatically ---
     print("\nRunning tip-tilt analysis and updating parameter files...")
 
-    analysis_script = "/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/read_tiptiltscan.py"
+    analysis_script = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'tiptiltscans' / 'read_tiptiltscan.py')
 
     try:
         subprocess.run(

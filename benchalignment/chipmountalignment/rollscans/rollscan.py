@@ -5,6 +5,7 @@ from pyMilk.interfacing.shm import SHM
 import numpy as np
 from astropy.io import fits
 import json
+import glint_paths
 
 AXES = {'pitch':1, 'roll':2, 'yaw':3, 'x':4, 'z':5, 'y':6}
 
@@ -299,13 +300,13 @@ if __name__ == "__main__":
 
 
     # Get dark frame
-    dark_filepath = '/home/scexao/glint/benchalignment/mountalignment/dark.fits'
+    dark_filepath = str(glint_paths.DATA_ROOT / 'benchalignment' / 'mountalignment' / 'dark.fits')
     dark = getdark(dark_filepath)
 
     
 
     # Get dark frame
-    dark_filepath = '/home/scexao/glint/benchalignment/mountalignment/dark.fits'
+    dark_filepath = str(glint_paths.DATA_ROOT / 'benchalignment' / 'mountalignment' / 'dark.fits')
     dark = getdark(dark_filepath)
 
     # Open devices
@@ -329,7 +330,7 @@ if __name__ == "__main__":
         print(f'Roll position set to {mount.get_pos(2)}')
 
 
-        savepath = f'/home/scexao/glint/benchalignment/mountalignment/rollscans/2025/{date}/scan{iteration}/roll_{rollpos}'
+        savepath = str(glint_paths.data_dir('benchalignment', 'mountalignment', 'rollscans', '2025', date, f'scan{iteration}', f'roll_{rollpos}'))
         checksavepath(savepath)
         
         # Do the scan

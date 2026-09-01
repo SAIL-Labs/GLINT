@@ -6,6 +6,7 @@ import numpy as np
 import tqdm
 from astropy.io import fits
 import json
+import glint_paths
 
 AXES = {'pitch':1, 'roll':2, 'yaw':3, 'x':4, 'z':5, 'y':6}
 
@@ -293,10 +294,10 @@ if __name__ == "__main__":
 
 
     # Get dark frame
-    dark_filepath = '/home/scexao/glint/alignment_scans/dark.fits'
+    dark_filepath = str(glint_paths.DATA_ROOT / 'alignment_scans' / 'dark.fits')
     dark = getdark(dark_filepath)
 
-    savepath = f'/home/scexao/glint/alignment_scans/zscans/2025/{date}/scan{iteration}'
+    savepath = str(glint_paths.data_dir('alignment_scans', 'zscans', '2025', date, f'scan{iteration}'))
     checksavepath(savepath)
 
     # Open devices

@@ -11,7 +11,7 @@ optimum is the centre of a fitted rotated elliptical Gaussian, not the
 brightest sampled pixel.
 
 Expected input files, as written by pitchyawscan.py:
-    /home/scexao/glint/benchalignment/chipmountalignment/pitchyawscans/scanoutput/{year}/{date}/scan{iteration}/
+    /home/scexao/glint/glintdata/benchalignment/chipmountalignment/pitchyawscans/scanoutput/{year}/{date}/scan{iteration}/
         pitchyawscan_spectra1_{iteration}.fits
         pitchyawscan_spectra2_{iteration}.fits
         pitchyawscan_spectra3_{iteration}.fits
@@ -31,6 +31,7 @@ from typing import Dict, Iterable, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
+import glint_paths
 
 try:
     from scipy.optimize import curve_fit
@@ -39,8 +40,8 @@ except Exception:
     SCIPY_AVAILABLE = False
 
 
-DEFAULT_PARAM_FILE = "/home/scexao/glint/benchalignment/chipmountalignment/pitchyawscans/scanparameters.json"
-DEFAULT_BASE_ROOT = "/home/scexao/glint/benchalignment/chipmountalignment/pitchyawscans/scanoutput"
+DEFAULT_PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'pitchyawscans' / 'scanparameters.json')
+DEFAULT_BASE_ROOT = str(glint_paths.data_dir('benchalignment', 'chipmountalignment', 'pitchyawscans', 'scanoutput'))
 DEFAULT_SPECTRA = (1, 2, 3)
 
 

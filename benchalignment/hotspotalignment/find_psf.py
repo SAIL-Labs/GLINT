@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 from pyMilk.interfacing.shm import SHM
 import sys
+import glint_paths
 
 
 def centroid(image, threshold=0):
@@ -52,7 +53,7 @@ def find_origin_com(img, threshold = 0.6):
 if __name__ == '__main__':
 
     # OG alignment at the summit
-    goalpath = "/home/scexao/glint/psf_pupil_alignment/20251021/"
+    goalpath = str(glint_paths.DATA_ROOT / 'benchalignment' / 'psfpupilframes' / '20251021') + '/'
     goalfilename = "psf_zerovolts.fits"
     goaldarkfilename = "psf_dark.fits"
 
@@ -71,7 +72,7 @@ if __name__ == '__main__':
     goalimg = goalimg/np.max(goalimg)
 
     # compare current alignment to the original alignment at the summit
-    path = "/home/scexao/glint/hotspotalignment/frames/"
+    path = str(glint_paths.data_dir('benchalignment', 'hotspotalignment', 'frames')) + '/'
     if len(sys.argv) == 1:
         print('Please provide the filename of the current image')
         sys.exit(1)

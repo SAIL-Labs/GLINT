@@ -20,13 +20,14 @@ import os
 import subprocess
 from datetime import datetime, timezone
 import tqdm
+import glint_paths
 
 # Mount axis name -> axis number, as expected by chipMountControl.Mount.
 AXES = {'pitch': 1, 'roll': 2, 'yaw': 3, 'x': 4, 'z': 5, 'y': 6}
 
-PARAM_FILE = '/home/scexao/glint/benchalignment/chipmountalignment/xyscans/scanparameters.json'
-DARK_FILEPATH = '/home/scexao/glint/benchalignment/dark.fits'
-ANALYSIS_SCRIPT = '/home/scexao/glint/benchalignment/chipmountalignment/xyscans/read_xyscan.py'
+PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'xyscans' / 'scanparameters.json')
+DARK_FILEPATH = str(glint_paths.CALIBRATION_ROOT / 'dark.fits')
+ANALYSIS_SCRIPT = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'xyscans' / 'read_xyscan.py')
 
 # Keys required in scanparameters.json under "config". Checked up front so a
 # typo or missing field fails fast with a clear message instead of a bare
@@ -347,7 +348,7 @@ if __name__ == "__main__":
     state['date'], state['year'] = date, year
     save_params(params)
 
-    base_dir = f'/home/scexao/glint/benchalignment/chipmountalignment/xyscans/scanoutput/{year}/{date}'
+    base_dir = str(glint_paths.data_dir('benchalignment', 'chipmountalignment', 'xyscans', 'scanoutput', year, date))
 
     # May bump state['iteration'] if today's folder already has data in it.
     savepath = checksavepath(base_dir, params)

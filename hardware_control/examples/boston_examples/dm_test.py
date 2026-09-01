@@ -3,7 +3,6 @@
 # Before running this, copy the "bmc" module from Python3\site-packages\bmc
 #  to your Python installation's site-packages directory.
 import sys
-sys.path.append('/home/scexao/glint/bmc/setup_files/')
 import bmc
 
 dm = bmc.BmcDm()

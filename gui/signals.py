@@ -24,6 +24,7 @@ import json
 import subprocess
 from datetime import datetime, timezone
 import ast
+import glint_paths
 
 PREVIOUS_VALUES = {
     'tab_DMposition_base': {(row, col): 0 for row in range(3) for col in range(3)},
@@ -772,7 +773,7 @@ def xyscan(gui):
     '''    
     # Load settings
     
-    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/scanparameters.json"
+    scanparams_path = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'xyscans' / 'scanparameters.json')
     with open(scanparams_path, 'r') as f:
         params = json.load(f)
 
@@ -794,10 +795,10 @@ def xyscan(gui):
         json.dump(params, f, indent=4)
 
     # Run the external script
-    subprocess.run(["python3", "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/xyscan.py"])
+    subprocess.run(["python3", str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'xyscans' / 'xyscan.py')])
 
     # Run the external script
-    # subprocess.run(["python3", "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/read_xyscan.py"])
+    # subprocess.run(["python3", str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'xyscans' / 'read_xyscan.py')])
 
 
 def pitchyawscan(gui):
@@ -814,7 +815,7 @@ def pitchyawscan(gui):
     '''    
     # Load settings
     
-    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/pitchyawscans/scanparameters.json"
+    scanparams_path = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'pitchyawscans' / 'scanparameters.json')
     with open(scanparams_path, 'r') as f:
         params = json.load(f)
 
@@ -836,7 +837,7 @@ def pitchyawscan(gui):
         json.dump(params, f, indent=4)
 
     # Run the external script
-    subprocess.run(["python3", "/home/scexao/glint/benchalignment/chipmountalignment/pitchyawscans/pitchyawscan.py"])
+    subprocess.run(["python3", str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'pitchyawscans' / 'pitchyawscan.py')])
 
 
 def tiptiltscan(gui):
@@ -852,7 +853,7 @@ def tiptiltscan(gui):
     '''    
     # Load settings
     
-    scanparams_path = "/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/scanparameters.json"
+    scanparams_path = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'tiptiltscans' / 'scanparameters.json')
     with open(scanparams_path, 'r') as f:
         params = json.load(f)
 
@@ -872,7 +873,7 @@ def tiptiltscan(gui):
         json.dump(params, f, indent=4)
 
     # Run the external script
-    subprocess.run(["python3", "/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/tiptiltscan.py"])
+    subprocess.run(["python3", str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'tiptiltscans' / 'tiptiltscan.py')])
 
 def parse_float(value, name="value"):
     """
@@ -893,7 +894,7 @@ def parse_float(value, name="value"):
 
 def nullscan(gui):
 
-    scanparams_path = "/home/scexao/glint/benchalignment/dmalignment/nullscans/scanparameters.json"
+    scanparams_path = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'nullscans' / 'scanparameters.json')
 
     with open(scanparams_path, 'r') as f:
         params = json.load(f)
@@ -919,7 +920,7 @@ def nullscan(gui):
         json.dump(params, f, indent=4)
 
     # Run the external script
-    subprocess.run(["python3", "/home/scexao/glint/benchalignment/dmalignment/nullscans/nullscan.py"])
+    subprocess.run(["python3", str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'nullscans' / 'nullscan.py')])
 
 
 ### dm FUNCTIONS ###

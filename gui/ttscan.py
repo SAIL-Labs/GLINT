@@ -5,6 +5,7 @@ import time
 import tqdm
 # from datetime import datetime
 import csv
+import glint_paths
 
 
  
@@ -21,7 +22,7 @@ def tiptiltscan(mems, cameras):
 
     takedark = False
     if takedark:
-        dark_filepath = '/home/scexao/glint/observing/night2/dark.fits'
+        dark_filepath = str(glint_paths.DATA_ROOT / 'observing' / 'night2' / 'dark.fits')
         dark = getdark(dark_filepath)
     else:
         dark = None
@@ -57,7 +58,7 @@ def tiptiltscan(mems, cameras):
             print('Invalid segment')
 
         # Open a CSV file to log the data
-        path = '/home/scexao/glint/observing/night2/ttscans/'
+        path = str(glint_paths.data_dir('observing', 'night2', 'ttscans')) + '/'
         # dtstart = str(datetime.now())
         # dtstart = dtstart.replace(' ', '_')
 
@@ -80,7 +81,7 @@ def tiptiltscan(mems, cameras):
         # Save data
         hdu = fits.PrimaryHDU(scan)
         hdul = fits.HDUList([hdu])
-        hdul.writeto(f'/home/scexao/glint/observing/night2/ttscans/scans/tiptilt_seg{segment}_start{tstart}.fits', overwrite=True)
+        hdul.writeto(str(glint_paths.data_dir('observing', 'night2', 'ttscans', 'scans') / f'tiptilt_seg{segment}_start{tstart}.fits'), overwrite=True)
 
 def saveframe(apapane, segment, tip, tilt, t):
     """
@@ -108,7 +109,7 @@ def saveframe(apapane, segment, tip, tilt, t):
     # Save the frame
     hdu = fits.PrimaryHDU(frame)
     hdul = fits.HDUList([hdu])
-    hdul.writeto(f'/home/scexao/glint/observing/night2/ttscans/frame_seg{segment}_tip{tip}_tilt{tilt}_{t}.fits', overwrite=True)
+    hdul.writeto(str(glint_paths.data_dir('observing', 'night2', 'ttscans') / f'frame_seg{segment}_tip{tip}_tilt{tilt}_{t}.fits'), overwrite=True)
 
 
 

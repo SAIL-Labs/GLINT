@@ -1,5 +1,4 @@
 import sys
-sys.path.append('/home/scexao/glint/control-code/')
 
 from chipMountControl import Mount
 from pyMilk.interfacing.shm import SHM
@@ -10,10 +9,11 @@ import os
 import subprocess
 from datetime import datetime, timezone
 import tqdm
+import glint_paths
 
 AXES = {'pitch':1, 'roll':2, 'yaw':3, 'x':4, 'z':5, 'y':6}
 
-PARAM_FILE = '/home/scexao/glint/alignment_scans/pitchyawscans/scanparameters.json'
+PARAM_FILE = str(glint_paths.CODE_ROOT / 'alignment_scans' / 'pitchyawscans' / 'scanparameters.json')
 
 def getdark(dark_filepath: str) -> np.ndarray:
     """
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     save_params(params)
 
     # Build base directory up to the date folder
-    base_dir = f'/home/scexao/glint/alignment_scans/pitchyawscans/{year}/{date}'
+    base_dir = str(glint_paths.data_dir('alignment_scans', 'pitchyawscans', year, date))
 
     # This may update iteration in the JSON
     savepath = checksavepath(base_dir)
@@ -338,7 +338,7 @@ if __name__ == "__main__":
 
 
     # Get dark frame
-    dark_filepath = '/home/scexao/glint/alignment_scans/dark.fits'
+    dark_filepath = str(glint_paths.DATA_ROOT / 'alignment_scans' / 'dark.fits')
     dark = getdark(dark_filepath)
 
     # Open devices
@@ -361,7 +361,7 @@ if __name__ == "__main__":
 
     print("\nRunning pitch-yaw analysis and updating parameter file...")
 
-    analysis_script = "/home/scexao/glint/alignment_scans/pitchyawscans/read_pitchyawscan.py"
+    analysis_script = str(glint_paths.CODE_ROOT / 'alignment_scans' / 'pitchyawscans' / 'read_pitchyawscan.py')
 
     try:
         subprocess.run(

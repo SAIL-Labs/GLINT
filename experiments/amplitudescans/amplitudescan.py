@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 import json
 import tqdm
+import glint_paths
 
 # Tip and tilt values fo segments [11,20,31] in that order
 
@@ -374,11 +375,11 @@ if __name__ == "__main__":
 
 
    # Get the dark frame
-    dark_filepath = '/home/scexao/glint/alignment_scans/darknull.fits'
+    dark_filepath = str(glint_paths.DATA_ROOT / 'alignment_scans' / 'darknull.fits')
     dark = getdark(dark_filepath)
 
 
-    savepath = f'/home/scexao/glint/alignment_scans/amplitudescans/2025/{date}/scan{iteration}/'
+    savepath = f'{glint_paths.data_dir("alignment_scans", "amplitudescans", "2025", date, f"scan{iteration}")}/'
     checksavepath(savepath)
 
     nsteps = np.ceil(scan_range/step_size).astype(int) + 1  # Number of steps in the scan (need to plus 1 to include the last position)

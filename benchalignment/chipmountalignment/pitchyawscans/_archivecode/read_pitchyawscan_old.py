@@ -9,7 +9,7 @@ best common centre, saves PNG/JSON outputs, and can optionally write the best
 pitch/yaw back into scanparameters.json.
 
 Expected input files, as written by pitchyawscan.py:
-    /home/scexao/glint/alignment_scans/pitchyawscans/{year}/{date}/scan{iteration}/
+    /home/scexao/glint/glintdata/alignment_scans/pitchyawscans/{year}/{date}/scan{iteration}/
         pitchyawscan_spectra1_{iteration}.fits
         pitchyawscan_spectra2_{iteration}.fits
         pitchyawscan_spectra3_{iteration}.fits
@@ -29,6 +29,7 @@ from typing import Dict, Iterable, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
+import glint_paths
 
 try:
     from scipy.optimize import curve_fit
@@ -37,8 +38,8 @@ except Exception:
     SCIPY_AVAILABLE = False
 
 
-DEFAULT_PARAM_FILE = "/home/scexao/glint/alignment_scans/pitchyawscans/scanparameters.json"
-DEFAULT_BASE_ROOT = "/home/scexao/glint/alignment_scans/pitchyawscans"
+DEFAULT_PARAM_FILE = str(glint_paths.CODE_ROOT / 'alignment_scans' / 'pitchyawscans' / 'scanparameters.json')
+DEFAULT_BASE_ROOT = str(glint_paths.data_dir('alignment_scans', 'pitchyawscans'))
 DEFAULT_SPECTRA = (1, 2, 3)
 
 

@@ -9,6 +9,7 @@
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+import glint_paths
 
 
 class Ui_MainWindow(object):
@@ -2375,7 +2376,7 @@ class Ui_MainWindow(object):
         self.label_pist_seg_39.setText(_translate("MainWindow", "Step size (um):"))
         self.label_manualMEMs_seg_16.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-size:9pt; font-weight:600;\">Save path </span></p></body></html>"))
         self.label_pist_seg_40.setText(_translate("MainWindow", "Path:"))
-        self.text_path_xy.setText(_translate("MainWindow", "/home/scexao/glint/alignment_scans/xyscans"))
+        self.text_path_xy.setText(_translate("MainWindow", str(glint_paths.data_dir("alignment_scans", "xyscans"))))
         self.label_pist_seg_41.setText(_translate("MainWindow", "Filename:"))
         self.text_filename_xy.setText(_translate("MainWindow", "xy"))
         self.pushButton_scan_xy.setText(_translate("MainWindow", "Scan"))
@@ -2389,7 +2390,7 @@ class Ui_MainWindow(object):
         self.label_pist_seg_44.setText(_translate("MainWindow", "Stepsize (pulses):"))
         self.label_manualMEMs_seg_18.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-size:9pt; font-weight:600;\">Save path </span></p></body></html>"))
         self.label_pist_seg_45.setText(_translate("MainWindow", "Path:"))
-        self.text_path_pitchyaw.setText(_translate("MainWindow", "/home/scexao/glint/alignment_scans/pitchyawscans"))
+        self.text_path_pitchyaw.setText(_translate("MainWindow", str(glint_paths.data_dir("alignment_scans", "pitchyawscans"))))
         self.label_pist_seg_46.setText(_translate("MainWindow", "Filename:"))
         self.pushButton_scan_pitchyaw.setText(_translate("MainWindow", "Scan"))
         self.tabWidget_xy.setTabText(self.tabWidget_xy.indexOf(self.tab_10), _translate("MainWindow", "pitch/yaw"))
@@ -2403,7 +2404,7 @@ class Ui_MainWindow(object):
         self.label_pist_seg_48.setText(_translate("MainWindow", "Range (um):   "))
         self.label_manualMEMs_seg_20.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-size:9pt; font-weight:600;\">Save path </span></p></body></html>"))
         self.label_pist_seg_50.setText(_translate("MainWindow", "Path:"))
-        self.text_path_z.setText(_translate("MainWindow", "/home/scexao/glint/alignment_scans/zscans"))
+        self.text_path_z.setText(_translate("MainWindow", str(glint_paths.data_dir("alignment_scans", "zscans"))))
         self.label_pist_seg_51.setText(_translate("MainWindow", "Filename:"))
         self.tabWidget_xy.setTabText(self.tabWidget_xy.indexOf(self.tab_7), _translate("MainWindow", "z"))
         self.pushButton_scan_tiptilt.setText(_translate("MainWindow", "Scan"))
@@ -2416,7 +2417,7 @@ class Ui_MainWindow(object):
         self.label_pist_seg_54.setText(_translate("MainWindow", "Step size (mrad):"))
         self.label_manualMEMs_seg_22.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-size:9pt; font-weight:600;\">Save path </span></p></body></html>"))
         self.label_pist_seg_55.setText(_translate("MainWindow", "Path:"))
-        self.text_path_tiptilt.setText(_translate("MainWindow", "/home/scexao/glint/alignment_scans/tiptiltscans"))
+        self.text_path_tiptilt.setText(_translate("MainWindow", str(glint_paths.data_dir("alignment_scans", "tiptiltscans"))))
         self.label_pist_seg_56.setText(_translate("MainWindow", "Filename:"))
         self.tabWidget_xy.setTabText(self.tabWidget_xy.indexOf(self.tab_8), _translate("MainWindow", "tip/tilt"))
         self.pushButton_scan_null.setText(_translate("MainWindow", "Scan"))
@@ -2429,7 +2430,7 @@ class Ui_MainWindow(object):
         self.label_pist_seg_59.setText(_translate("MainWindow", "Step size (um):"))
         self.label_manualMEMs_seg_24.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-size:9pt; font-weight:600;\">Save path </span></p></body></html>"))
         self.label_pist_seg_60.setText(_translate("MainWindow", "Path:"))
-        self.text_path_null.setText(_translate("MainWindow", "/home/scexao/glint/alignment_scans/nullscans"))
+        self.text_path_null.setText(_translate("MainWindow", str(glint_paths.data_dir("alignment_scans", "nullscans"))))
         self.label_pist_seg_61.setText(_translate("MainWindow", "Filename:"))
         self.tabWidget_xy.setTabText(self.tabWidget_xy.indexOf(self.tab_11), _translate("MainWindow", "null"))
         self.label_saveData.setText(_translate("MainWindow", "<html><head/><body><p align=\"center\"><span style=\" font-size:9pt; font-weight:600;\">Save frames</span></p></body></html>"))
@@ -2439,7 +2440,7 @@ class Ui_MainWindow(object):
         self.checkBox_apapane.setText(_translate("MainWindow", "Apapane frame"))
         self.label_numframes.setText(_translate("MainWindow", "Num. apapane frames:"))
         self.label_path.setText(_translate("MainWindow", "Path:"))
-        self.text_path.setText(_translate("MainWindow", "/home/scexao/glint/"))
+        self.text_path.setText(_translate("MainWindow", str(glint_paths.DATA_ROOT)))
         self.label_filename.setText(_translate("MainWindow", "Filename:"))
         self.pushButton_save.setText(_translate("MainWindow", "Save"))
         self.checkBox_simMode.setText(_translate("MainWindow", "Simulation Mode"))

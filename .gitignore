@@ -17,16 +17,12 @@ __pycache__/
 *.png
 *.log
 
-# Known large data/archive directories
-/_dataarchive/
-/_codearchive/
+# Known large data/archive directories (safety net -- glint_paths.py routes all
+# script output to the sibling glintdata/ tree, so these should stay empty)
 **/scanoutput/
 **/scanoutputs/
 **/live_outputs/
-hardwarescripts/bmc/mapping_investigation/data/
 hardware_control/examples/mapping_investigation/data/
-hardwarescripts/command_log.txt
-hardware_control/hardware_control/mountcontrol/command_log.txt
 experiments/turbsim2wfe/simple-test/data/
 
 # Dated per-run scan output dirs (e.g. tiptiltscans/2026/05-20/scan3/), which
@@ -36,5 +32,4 @@ experiments/turbsim2wfe/simple-test/data/
 
 # Investigation notebook with embedded image-sequence output (35MB of pixels,
 # not code).
-hardwarescripts/bmc/mapping_investigation/actuator_gif.ipynb
 hardware_control/examples/mapping_investigation/actuator_gif.ipynb

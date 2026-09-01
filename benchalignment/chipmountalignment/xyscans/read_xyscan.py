@@ -10,7 +10,7 @@ common centroid, saves a PNG and JSON, and can optionally write the fitted
 x/y position back into scanparameters.json.
 
 Expected files:
-    /home/scexao/glint/benchalignment/chipmountalignment/xyscans/scanoutput/{year}/{date}/scan{iteration}/
+    /home/scexao/glint/glintdata/benchalignment/chipmountalignment/xyscans/scanoutput/{year}/{date}/scan{iteration}/
         xyscan_spectra1_{iteration}.fits
         xyscan_spectra2_{iteration}.fits
         xyscan_spectra3_{iteration}.fits
@@ -30,10 +30,11 @@ from typing import Dict, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
+import glint_paths
 
 
-DEFAULT_PARAM_FILE = "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/scanparameters.json"
-DEFAULT_BASE_ROOT = "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/scanoutput"
+DEFAULT_PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'xyscans' / 'scanparameters.json')
+DEFAULT_BASE_ROOT = str(glint_paths.data_dir('benchalignment', 'chipmountalignment', 'xyscans', 'scanoutput'))
 DEFAULT_N_SPECTRA = 3
 
 

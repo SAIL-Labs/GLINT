@@ -5,6 +5,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt5 import QtWidgets
 import json
+import glint_paths
 
 class IntegerDelegate(QtWidgets.QStyledItemDelegate):
 
@@ -92,7 +93,7 @@ def load_scan_config(scanparams_path: str) -> dict:
 
 
 def setup_alignmentparams(gui):
-    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/xyscans/scanparameters.json"
+    scanparams_path = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'xyscans' / 'scanparameters.json')
     config = load_scan_config(scanparams_path)
 
     
@@ -105,7 +106,7 @@ def setup_alignmentparams(gui):
     scan_range = config['scan_range']
     gui.text_range_xy.setText(str(scan_range))
 
-    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/pitchyawscans/scanparameters.json"
+    scanparams_path = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'pitchyawscans' / 'scanparameters.json')
     config = load_scan_config(scanparams_path)
 
     #pitchyaw
@@ -116,7 +117,7 @@ def setup_alignmentparams(gui):
     scan_range = config['scan_range']
     gui.text_range_pitchyaw.setText(str(scan_range))
 
-    scanparams_path = "/home/scexao/glint/benchalignment/chipmountalignment/zscans/scanparameters.json"
+    scanparams_path = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'zscans' / 'scanparameters.json')
     config = load_scan_config(scanparams_path)
     #z
     step_size = config['zstep_size']
@@ -126,7 +127,7 @@ def setup_alignmentparams(gui):
     scan_range = config['zscan_range']
     gui.text_range_z.setText(str(scan_range))
 
-    scanparams_path = "/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/scanparameters.json"
+    scanparams_path = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'tiptiltscans' / 'scanparameters.json')
     config = load_scan_config(scanparams_path)
 
     #tiptilt
@@ -137,7 +138,7 @@ def setup_alignmentparams(gui):
     scan_range = config['scan_range']
     gui.text_range_tiptilt.setText(str(scan_range))
 
-    scanparams_path = "/home/scexao/glint/benchalignment/dmalignment/nullscans/scanparameters.json"
+    scanparams_path = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'nullscans' / 'scanparameters.json')
     config = load_scan_config(scanparams_path)
 
     #null

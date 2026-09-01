@@ -2,6 +2,7 @@ from serial import Serial
 import os
 from pathlib import Path
 from datetime import datetime
+import glint_paths
 
 class Mount:
 
@@ -9,7 +10,7 @@ class Mount:
         # self.s = Serial('/dev/ttyUSB2')#, baudrate=38400)
         self.s = Serial(port, baudrate)
 
-        file_path = Path(__file__).resolve().parent / 'command_log.txt'
+        file_path = glint_paths.data_dir("hardware_control", "mountcontrol") / 'command_log.txt'
 
         self.f = open(file_path, "a")
     

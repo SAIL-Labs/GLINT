@@ -8,7 +8,7 @@ sums each photometry cube into a 2D tip/tilt heatmap, estimates the optimum
 position for each segment, saves heatmap PNGs, and writes the results to JSON. The default optimum is the centre of a fitted rotated elliptical Gaussian, not the brightest sampled pixel.
 
 Expected scan files are written by the scan script as:
-    /home/scexao/glint/benchalignment/dmalignment/tiptiltscans/{year}/{date}/scan{iteration}/
+    /home/scexao/glint/glintdata/benchalignment/dmalignment/tiptiltscans/{year}/{date}/scan{iteration}/
         tiptiltscan_seg11_{iteration}.fits
         tiptiltscan_seg20_{iteration}.fits
         tiptiltscan_seg31_{iteration}.fits
@@ -31,6 +31,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
+import glint_paths
 
 try:
     from scipy.optimize import curve_fit
@@ -39,9 +40,9 @@ except Exception:
     SCIPY_AVAILABLE = False
 
 
-DEFAULT_PARAM_FILE = "/home/scexao/glint/benchalignment/dmalignment/tiptiltscans/scanparameters.json"
-DEFAULT_NULLSCAN_PARAM_FILE = "/home/scexao/glint/benchalignment/dmalignment/nullscans/scanparameters.json"
-DEFAULT_BASE_ROOT = "/home/scexao/glint/benchalignment/dmalignment/tiptiltscans"
+DEFAULT_PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'tiptiltscans' / 'scanparameters.json')
+DEFAULT_NULLSCAN_PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'nullscans' / 'scanparameters.json')
+DEFAULT_BASE_ROOT = str(glint_paths.data_dir('benchalignment', 'dmalignment', 'tiptiltscans'))
 DEFAULT_SEGMENTS = (11, 20, 31)
 
 

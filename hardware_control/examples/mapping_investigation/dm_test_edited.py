@@ -6,6 +6,9 @@ import sys
 sys.path.append('/home/scexao/steph/bmc')
 import bmc
 import numpy as np
+import glint_paths
+
+MAPS_DIR = glint_paths.data_dir("hardware_control", "examples", "mapping_investigation", "maps")
 
 dm = bmc.BmcDm()
 
@@ -18,7 +21,7 @@ if err_code:
 
 mapping = list(dm.default_mapping())
 
-np.savez('default_map.npz', mapping)
+np.savez(MAPS_DIR / 'default_map.npz', mapping)
 
 
 data = bmc.DoubleVector()
@@ -28,7 +31,7 @@ dm.send_data(data)
 monotonic_map = range(0, dm.num_actuators())
 dm.send_data_custom_mapping(data, monotonic_map)
 
-np.savez('monotonic_map.npz', monotonic_map)
+np.savez(MAPS_DIR / 'monotonic_map.npz', monotonic_map)
 
 print('BMC error status:', dm.error_string(dm.get_status()))
 

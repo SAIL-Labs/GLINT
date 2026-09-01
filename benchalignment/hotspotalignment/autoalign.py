@@ -6,21 +6,24 @@ from pyMilk.interfacing.shm import SHM
 import time
 import os
 import matplotlib.pyplot as plt
+import glint_paths
 
 # ============================
 # --- Response Matrix IO ----
 # ============================
-def save_RM(R, filename="response_matrix.npy"):
+DEFAULT_RM_FILENAME = str(glint_paths.data_dir("benchalignment", "hotspotalignment") / "response_matrix.npy")
+
+def save_RM(R, filename=DEFAULT_RM_FILENAME):
     np.save(filename, R)
     print(f"Response matrix saved to {filename}.")
 
-def load_RM(filename="response_matrix.npy"):
+def load_RM(filename=DEFAULT_RM_FILENAME):
     if os.path.exists(filename):
         print(f"Loaded response matrix from {filename}.")
         return np.load(filename)
     else:
         print(f"Response matrix file {filename} not found.")
-        return Nonealignment
+        return None
 
 
 # ============================
@@ -60,7 +63,7 @@ def _prompt_int(prompt: str, default: int, min_value: int = 1, max_value: int | 
 # ============================
 # --- Main Loop -------------
 # ============================
-def mainloop(update_RM=False, RM_filename="response_matrix.npy"):
+def mainloop(update_RM=False, RM_filename=DEFAULT_RM_FILENAME):
     """
     Aligns the PSF to a goal position using a feedback loop based on a response matrix.
     """
@@ -74,10 +77,10 @@ def mainloop(update_RM=False, RM_filename="response_matrix.npy"):
     print(f"\nCurrent mirror positions (before alignment): u = {thetas_now[0]:.6f}, v = {thetas_now[1]:.6f}")
 
     # Load goal coordinates
-    # goal_bright = fits.getdata('/home/scexao/glint/psf_pupil_alignment/20251021/psf_zerovolts.fits')
-    # goal_dark = fits.getdata('/home/scexao/glint/psf_pupil_alignment/20251021/psf_dark.fits')
-    goal_bright = fits.getdata('/home/scexao/glint/benchalignment/psfpupilframes/20260602/ir_irisclosed_psf_zerodm.fits')
-    goal_dark = fits.getdata('/home/scexao/glint/benchalignment/psfpupilframes/20260602/dark_psf.fits')
+    # goal_bright = fits.getdata(f'{glint_paths.DATA_ROOT}/benchalignment/psfpupilframes/20251021/psf_zerovolts.fits')
+    # goal_dark = fits.getdata(f'{glint_paths.DATA_ROOT}/benchalignment/psfpupilframes/20251021/psf_dark.fits')
+    goal_bright = fits.getdata(str(glint_paths.DATA_ROOT / 'benchalignment' / 'psfpupilframes' / '20260602' / 'ir_irisclosed_psf_zerodm.fits'))
+    goal_dark = fits.getdata(str(glint_paths.DATA_ROOT / 'benchalignment' / 'psfpupilframes' / '20260602' / 'dark_psf.fits'))
     goal_pos = get_hotspot(goal_bright, goal_dark, nframes=nframes_avg, do_plot=plot_updates)
     print(f"\nGoal pos: {goal_pos}\n")
 
@@ -250,7 +253,7 @@ def get_hotspot(brightframe=None, dark=None, nframes: int = 50, do_plot: bool = 
 
     if dark is None:
         try:
-            dark = fits.getdata('dark.fits').astype(float)
+            dark = fits.getdata(str(glint_paths.data_dir("benchalignment", "hotspotalignment") / "dark.fits")).astype(float)
         except Exception:
             print('save a dark')
             return
