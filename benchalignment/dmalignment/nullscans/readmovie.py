@@ -3,6 +3,7 @@ import json
 
 import matplotlib.pyplot as plt
 import numpy as np
+import glint_paths
 
 
 # wavelength = {10:'1650nm', 22:'1600nm', 35:'1550nm', 55:'1500nm'}
@@ -13,14 +14,14 @@ colours = {0:'C3', 10:'C2', 15:'C1', 20: 'C0', 25: 'C4'}
 date = '06-25'
 
 
-darkpath = f'/home/scexao/glint/benchalignment/dmalignment/nullscans/2026/{date}/scan2'
+darkpath = str(glint_paths.data_dir('benchalignment', 'dmalignment', 'nullscans', '2026', date, 'scan2'))
 
 for iteration in [1]:
 
     for baseline in [["11","31"],["11","20"]]:#, ["20","31"]]: #,
         plt.figure(figsize = (10,5))
 
-        path = f'/home/scexao/glint/benchalignment/dmalignment/nullscans/2026/{date}/scan{iteration}'
+        path = str(glint_paths.data_dir('benchalignment', 'dmalignment', 'nullscans', '2026', date, f'scan{iteration}'))
 
         # Open the file
         hdul = fits.open(f'{path}/avgmovie_{baseline[0]}:{baseline[1]}.fits')

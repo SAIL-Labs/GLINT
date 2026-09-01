@@ -1,5 +1,4 @@
 import sys
-sys.path.append('/home/scexao/glint/control-code/')
 
 # import apiMEMsControl
 import shmDMcontrol
@@ -12,6 +11,7 @@ import tqdm
 import json
 import os
 from datetime import datetime, timezone
+import glint_paths
 
 
 
@@ -298,10 +298,10 @@ if __name__ == "__main__":
 
 
    # Get the dark frame
-    dark_filepath = '/home/scexao/glint/alignment_scans/darknull.fits'
+    dark_filepath = str(glint_paths.DATA_ROOT / 'alignment_scans' / 'darknull.fits')
     dark = getdark(dark_filepath)
 
-    savepath = f'/home/scexao/glint/alignment_scans/nullscans/2025/{date}/scan{iteration}'
+    savepath = str(glint_paths.data_dir('alignment_scans', 'nullscans', '2025', date, f'scan{iteration}'))
     checksavepath(savepath)
 
     nsteps = np.ceil(scan_range/step_size).astype(int) + 1  # Number of steps in the scan (need to plus 1 to include the last position)
@@ -356,10 +356,10 @@ if __name__ == "__main__":
 #     box_halfwidth = params['box_halfwidth']
 #     iscred1 = params['iscred1']
 
-#     dark_filepath = '/home/scexao/glint/alignment_scans/dark.fits'
+#     dark_filepath = str(glint_paths.DATA_ROOT / 'alignment_scans' / 'dark.fits')
 #     dark = getdark(dark_filepath)
 
-#     savepath = f'/home/scexao/glint/alignment_scans/nullscans/2025/{date}/scan{iteration}'
+#     savepath = str(glint_paths.data_dir('alignment_scans', 'nullscans', '2025', date, f'scan{iteration}'))
 #     checksavepath(savepath)
 
 #     # get the three photometry boxes

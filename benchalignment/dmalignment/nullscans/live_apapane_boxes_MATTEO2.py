@@ -33,6 +33,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+import glint_paths
 
 try:
     from astropy.io import fits
@@ -53,7 +54,7 @@ except Exception as exc:
 # Set to the dark FITS cube path.
 # Expected dark shape: (N, 256, 320), e.g. (25, 256, 320).
 # If set to None, no dark subtraction is applied and DEFAULT_NFRAMES is used.
-DARK_PATH = "/home/scexao/glint/darkMatteo.fits"
+DARK_PATH = str(glint_paths.DATA_ROOT / '_dataarchive' / 'darkMatteo.fits')
 
 DEFAULT_SHM_NAME = "apapane"
 DEFAULT_NFRAMES = 25

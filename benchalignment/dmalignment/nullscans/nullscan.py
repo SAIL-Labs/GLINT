@@ -26,9 +26,10 @@ import os
 import json
 import tqdm
 from datetime import datetime, timezone
+import glint_paths
 
-PARAM_FILE = '/home/scexao/glint/benchalignment/dmalignment/nullscans/scanparameters.json'
-DARK_FILEPATH = '/home/scexao/glint/benchalignment/dark.fits'
+PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'nullscans' / 'scanparameters.json')
+DARK_FILEPATH = str(glint_paths.CALIBRATION_ROOT / 'dark.fits')
 
 # Segments not being actively scanned are tilted away to this tip/tilt 
 TIP, TILT = -5.5, -4
@@ -486,7 +487,7 @@ if __name__ == "__main__":
     save_params(params)
 
     # Build base directory up to the date folder
-    base_dir = f'/home/scexao/glint/benchalignment/dmalignment/nullscans/scanoutput/{year}/{date}'
+    base_dir = str(glint_paths.data_dir('benchalignment', 'dmalignment', 'nullscans', 'scanoutput', year, date))
 
     # May bump state['iteration'] if today's folder already has data in it.
     savepath = checksavepath(base_dir, params)

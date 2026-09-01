@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from scipy.optimize import curve_fit
+import glint_paths
 
 def sin_squared_model(x, A, f, x0, C):
     return A * (1 - np.cos(2 * np.pi * f * (x - x0))) / 2 + C
@@ -21,7 +22,7 @@ date = '05-03'
 year = '2026'
 
 
-darkpath = f'/home/scexao/glint/alignment_scans/nullscans/{year}/{date}/scan{dark_iter}'
+darkpath = str(glint_paths.data_dir('alignment_scans', 'nullscans', year, date, f'scan{dark_iter}'))
 
 for iteration in [12]:
 
@@ -41,7 +42,7 @@ for iteration in [12]:
             upperbound = 1
         plt.figure(figsize = (10,5))
 
-        path = f'/home/scexao/glint/alignment_scans/nullscans/2026/{date}/scan{iteration}'
+        path = str(glint_paths.data_dir('alignment_scans', 'nullscans', '2026', date, f'scan{iteration}'))
 
         # Open the file
         hdul = fits.open(f'{path}/avgmovie_{baseline[0]}:{baseline[1]}.fits')

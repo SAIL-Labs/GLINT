@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 import json
 import tqdm
+import glint_paths
 
 
 # -------------------------
@@ -451,10 +452,10 @@ if __name__ == "__main__":
 
 
    # Get the dark frame
-    dark_filepath = '/home/scexao/glint/alignment_scans/darknull.fits'
+    dark_filepath = str(glint_paths.DATA_ROOT / 'alignment_scans' / 'darknull.fits')
     dark = getdark(dark_filepath)
 
-    savepath = f'/home/scexao/glint/alignment_scans/nullscans/{year}/{date}/scan{iteration}'
+    savepath = str(glint_paths.data_dir('alignment_scans', 'nullscans', year, date, f'scan{iteration}'))
     checksavepath(savepath)
 
 

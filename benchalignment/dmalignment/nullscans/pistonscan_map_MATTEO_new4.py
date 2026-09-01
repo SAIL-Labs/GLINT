@@ -47,6 +47,7 @@ import tqdm
 
 from hardware_control.dmcontrol import shmDMcontrol
 from pyMilk.interfacing.shm import SHM
+import glint_paths
 
 
 # =============================================================================
@@ -55,7 +56,7 @@ from pyMilk.interfacing.shm import SHM
 
 # Output bookkeeping. The FITS file will be written to:
 #   OUTPUT_ROOT / YEAR / DATE / scanITERATION / nullscan_table_ITERATION.fits
-OUTPUT_ROOT = "/home/scexao/glint/alignment_scans/nullscans"
+OUTPUT_ROOT = str(glint_paths.data_dir('alignment_scans', 'nullscans'))
 YEAR = 2026
 #DATE = "06-01_TILTED"           #False tilted
 #DATE = "06-01_TILTED_ALLINJ"   #True tilted
@@ -130,7 +131,7 @@ OTHER_SEGMENT_COMMANDS = {
 
 # Camera / dark settings
 APAPANE_SHM_NAME = "apapane"
-DARK_FILEPATH = "/home/scexao/glint/darkMatteo.fits"
+DARK_FILEPATH = str(glint_paths.DATA_ROOT / '_dataarchive' / 'darkMatteo.fits')
 NFRAMES = 25
 NUMAVG = 1
 

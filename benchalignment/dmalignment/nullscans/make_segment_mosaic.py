@@ -1,7 +1,7 @@
 
 '''
 python make_segment_mosaic.py \
-    --root-dir /home/scexao/glint/benchalignment/dmalignment/nullscans \
+    --root-dir /home/scexao/glint/glintdata/benchalignment/dmalignment/nullscans \
     --year 2026 \
     --date 05-01 \
     --scan 16 \
@@ -23,6 +23,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
 from PIL import Image
+import glint_paths
 
 
 # ----------------------------
@@ -48,7 +49,7 @@ def parse_args() -> argparse.Namespace:
         "--root-dir",
         type=Path,
         required=True,
-        help="Root nullscan directory, e.g. /home/scexao/glint/benchalignment/dmalignment/nullscans",
+        help="Root nullscan directory, e.g. /home/scexao/glint/glintdata/benchalignment/dmalignment/nullscans",
     )
     p.add_argument("--year", type=str, required=True, help="Year folder, e.g. 2026")
     p.add_argument("--date", type=str, required=True, help="Date folder, e.g. 04-21")

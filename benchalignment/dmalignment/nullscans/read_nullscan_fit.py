@@ -21,14 +21,14 @@ python read_nullscan_fit.py --date 05-03 --iteration 12 --wavelength-nm 1650
 # Disable zoom (fit full OPD range)
 python read_nullscan_fit.py --date 05-03 --iteration 12 --no-zoom
 
-# Don’t save figures
+# Don’t save figuresr
 python read_nullscan_fit.py --date 05-03 --iteration 12 --no-save
 
 # Don’t display figures (useful for remote runs)
 python read_nullscan_fit.py --date 05-03 --iteration 12 --no-show
 
 Notes:
-- Paths assume: /home/scexao/glint/benchalignment/dmalignment/nullscans/{year}/{date}/scanX
+- Paths assume: /home/scexao/glint/glintdata/benchalignment/dmalignment/nullscans/{year}/{date}/scanX
 - Dark subtraction requires matching OPD sampling between scans
 - Baselines are formatted as "segment1:segment2" (e.g. 11:31)
 
@@ -41,6 +41,7 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import curve_fit
+import glint_paths
 
 
 def sin_squared_model(x, A, f, x0, C):
@@ -75,7 +76,7 @@ def fit_and_plot_nullscan(
     save=True,
     show=True,
 ):
-    base_dir = Path(f"/home/scexao/glint/benchalignment/dmalignment/nullscans/scanoutput/{year}/{date}")
+    base_dir = glint_paths.data_dir('benchalignment', 'dmalignment', 'nullscans', 'scanoutput', year, date)
     scan_path = base_dir / f"scan{iteration}"
 
     defaults = BASELINE_DEFAULTS[tuple(baseline)]

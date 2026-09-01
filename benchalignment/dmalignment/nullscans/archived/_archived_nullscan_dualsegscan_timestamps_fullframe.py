@@ -1,5 +1,4 @@
 import sys
-sys.path.append('/home/scexao/glint/control-code/')
 
 import shmDMcontrol
 from pyMilk.interfacing.shm import SHM
@@ -10,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 import json
 import tqdm
+import glint_paths
 
 # Tip and tilt values fo segments [11,20,31] in that order
 
@@ -423,10 +423,10 @@ if __name__ == "__main__":
 
 
    # Get the dark frame
-    dark_filepath = '/home/scexao/glint/alignment_scans/darknull.fits'
+    dark_filepath = str(glint_paths.DATA_ROOT / 'alignment_scans' / 'darknull.fits')
     dark = getdark(dark_filepath)
 
-    # savepath = f'/home/scexao/glint/alignment_scans/nullscans/2025/{date}/scan{iteration}'
+    # savepath = f'{glint_paths.DATA_ROOT}/alignment_scans/nullscans/2025/{date}/scan{iteration}'
     savepath = f'/mnt/userdata/srossini/nullscans/{year}/{date}/scan{iteration}/'
     checksavepath(savepath)
 
