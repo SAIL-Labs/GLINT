@@ -272,7 +272,7 @@ if __name__ == '__main__':
 
 
     # Get dark frame
-    dark_filepath = str(glint_paths.CALIBRATION_ROOT / 'dark.fits')
+    dark_filepath = str(glint_paths.DATA_ROOT / 'benchalignment' / 'spectraldark.fits')
     dark = getdark(dark_filepath)
 
     

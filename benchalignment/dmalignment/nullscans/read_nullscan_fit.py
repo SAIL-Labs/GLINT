@@ -4,7 +4,7 @@ read_nullscan_fit.py
 Example usage:
 
 # Basic usage (fit a single null scan)
-python read_nullscan_fit.py --date 08-29 --iteration 4
+python read_nullscan_fit.py --date 09-01 --iteration 3
 
 # With dark subtraction
 python read_nullscan_fit.py --date 05-03 --iteration 12 --dark-iteration 13
@@ -50,7 +50,7 @@ def sin_squared_model(x, A, f, x0, C):
 
 BASELINE_DEFAULTS = {
     ("11", "31"): dict(opd_guess=1.0, lower=2, upper=3),
-    ("11", "20"): dict(opd_guess=4.0, lower=0.0, upper=1.0),
+    ("11", "20"): dict(opd_guess=4.0, lower=0.5, upper=1.5),
     ("20", "31"): dict(opd_guess=10.0, lower=-0.5, upper=1.0),
 }
 
@@ -76,7 +76,7 @@ def fit_and_plot_nullscan(
     save=True,
     show=True,
 ):
-    base_dir = glint_paths.data_dir('benchalignment', 'dmalignment', 'nullscans', 'scanoutput', year, date)
+    base_dir = glint_paths.data_dir('benchalignment', 'dmalignment', 'nullscans', 'scanoutputs', year, date)
     scan_path = base_dir / f"scan{iteration}"
 
     defaults = BASELINE_DEFAULTS[tuple(baseline)]

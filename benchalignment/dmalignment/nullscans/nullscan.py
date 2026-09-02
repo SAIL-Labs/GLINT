@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 import glint_paths
 
 PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'nullscans' / 'scanparameters.json')
-DARK_FILEPATH = str(glint_paths.CALIBRATION_ROOT / 'dark.fits')
+DARK_FILEPATH = str(glint_paths.DATA_ROOT / 'benchalignment' / 'spectraldark.fits')
 
 # Segments not being actively scanned are tilted away to this tip/tilt 
 TIP, TILT = -5.5, -4
@@ -153,17 +153,15 @@ def open_devices():
     return apapane, dm
 
 
-def getdata(apapane: SHM, box: list, dark: np.ndarray, nframes: int = 1) -> np.ndarray:
+def getdata(apapane: SHM, dark: np.ndarray, nframes: int = 1) -> np.ndarray:
     """
-    Grab frame(s) from APAPANE, dark-subtract, and crop to one spectral box.
+    Grab frame(s) from APAPANE and dark-subtract.
     Future versions of this code will instead formally spectrally extract the data with wavelength bins.
 
     Parameters
     ----------
     apapane : SHM
         Shared-memory handle for the APAPANE camera.
-    box : list
-        [top, bottom, left, right] pixel bounds to crop to (see getbox()).
     dark : np.ndarray
         Dark frame to subtract, same shape as the raw APAPANE frame.
     nframes : int, optional
@@ -172,17 +170,34 @@ def getdata(apapane: SHM, box: list, dark: np.ndarray, nframes: int = 1) -> np.n
     Returns
     -------
     data : np.ndarray
-        Dark-subtracted, cropped data.
+        Dark-subtracted full frame.
     """
-    top, bottom, left, right = box
-    if right <= left or bottom <= top:
-        raise ValueError(f"Invalid box dimensions: top={top}, bottom={bottom}, left={left}, right={right}")
-
     frames = apapane.multi_recv_data(nframes)
     frames = np.array(frames, dtype=float)
 
     avg = np.mean(frames, axis=0)
-    data = avg - dark
+    return avg - dark
+
+
+def crop_to_box(data: np.ndarray, box: list) -> np.ndarray:
+    """
+    Crop a full frame to one spectral box.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Full (dark-subtracted) frame.
+    box : list
+        [top, bottom, left, right] pixel bounds to crop to (see getbox()).
+
+    Returns
+    -------
+    cropped : np.ndarray
+        Cropped data.
+    """
+    top, bottom, left, right = box
+    if right <= left or bottom <= top:
+        raise ValueError(f"Invalid box dimensions: top={top}, bottom={bottom}, left={left}, right={right}")
 
     return data[top:bottom, left:right]
 
@@ -335,7 +350,7 @@ def plot_normscan(baseline: list, scan: np.ndarray, opd: np.ndarray, iteration: 
 def nullscan(apapane: SHM, dm, baseline: list, tip: list, tilt: list, pistpositions: np.ndarray,
              box: list, dark: np.ndarray, savepath: str, nframes: int = 1,
              scan_one_segment: bool = True, tilt_unused: bool = True,
-             save_timestamps: bool = False):
+             save_timestamps: bool = False, save_full_frame: bool = False):
     """
     Piston-scan one baseline's segment(s) recording
     the summed flux in its null-channel spectral box at every position.
@@ -375,11 +390,16 @@ def nullscan(apapane: SHM, dm, baseline: list, tip: list, tilt: list, pistpositi
         scanning. Default True.
     save_timestamps : bool, optional
         If True, record a wall-clock timestamp per frame. Default False.
+    save_full_frame : bool, optional
+        If True, `movie` stores the full APAPANE frame at each position
+        instead of the cropped spectral box. The scanned flux is still
+        summed over the box either way. Default False.
 
     Returns
     -------
     movie : np.ndarray
-        Shape (n_frames, box_height, box_width) photometry cube.
+        Shape (n_frames, box_height, box_width) photometry cube, or
+        (n_frames, frame_height, frame_width) if `save_full_frame` is True.
     scan : np.ndarray
         Summed flux at each frame.
     opd : np.ndarray
@@ -417,7 +437,8 @@ def nullscan(apapane: SHM, dm, baseline: list, tip: list, tilt: list, pistpositi
         time.sleep(0.01)
 
     print(f'Scanning baseline {seg1}-{seg2}')
-    height, width = box[1] - box[0], box[3] - box[2]
+    height, width = (dark.shape if save_full_frame
+                      else (box[1] - box[0], box[3] - box[2]))
     movie_len = n if scan_one_segment else (2 * n - 1)
     movie = np.zeros((movie_len, height, width), dtype=float)
     timestamps = [] if save_timestamps else None
@@ -425,20 +446,21 @@ def nullscan(apapane: SHM, dm, baseline: list, tip: list, tilt: list, pistpositi
     pbar = tqdm.tqdm(desc="Null scan", total=movie_len)
 
     for posnum in range(movie_len):
-        frame = getdata(apapane, box, dark, nframes)
-        movie[posnum] = frame
+        full_frame = getdata(apapane, dark, nframes)
+        boxed_frame = crop_to_box(full_frame, box)
+        movie[posnum] = full_frame if save_full_frame else boxed_frame
 
         if posnum < n:
             # Scan 1: move seg1.
             dm.set_segment(seg1, pos_seg1_scan1[posnum], tip_seg1, tilt_seg1)
             time.sleep(0.001)
-            nullscan_seg1[posnum] = np.sum(frame)
+            nullscan_seg1[posnum] = np.sum(boxed_frame)
         elif not scan_one_segment:
             # Scan 2: move seg2.
             idx = posnum - n
             dm.set_segment(seg2, pos_seg2_scan2[idx], tip_seg2, tilt_seg2)
             time.sleep(0.001)
-            nullscan_seg2[idx] = np.sum(frame)
+            nullscan_seg2[idx] = np.sum(boxed_frame)
 
         if save_timestamps:
             timestamps.append(time.time())
@@ -468,6 +490,7 @@ if __name__ == "__main__":
     scan_one_segment = False
     tilt_unused = True
     save_timestamps = False
+    save_full_frame = False
 
     params = load_params()
     validate_config(params['config'])
@@ -487,7 +510,7 @@ if __name__ == "__main__":
     save_params(params)
 
     # Build base directory up to the date folder
-    base_dir = str(glint_paths.data_dir('benchalignment', 'dmalignment', 'nullscans', 'scanoutput', year, date))
+    base_dir = str(glint_paths.data_dir('benchalignment', 'dmalignment', 'nullscans', 'scanoutputs', year, date))
 
     # May bump state['iteration'] if today's folder already has data in it.
     savepath = checksavepath(base_dir, params)
@@ -546,6 +569,7 @@ if __name__ == "__main__":
                 apapane, dm, baseline, tip, tilt, pistpositions, box, dark, savepath,
                 nframes=nframes, scan_one_segment=scan_one_segment,
                 tilt_unused=tilt_unused, save_timestamps=save_timestamps,
+                save_full_frame=save_full_frame,
             )
             plot_scan(baseline, scan, opd, iteration, savepath, save=True, avg=False)
             avgscan_list.append(scan)

@@ -8,6 +8,6 @@ CALIBRATION_ROOT = DATA_ROOT / "calibrationdata"
 
 def data_dir(*relative_parts) -> Path:
     """Mirror a code-relative path under DATA_ROOT, creating it if needed."""
-    p = DATA_ROOT.joinpath(*relative_parts)
+    p = DATA_ROOT.joinpath(*(str(part) for part in relative_parts))
     p.mkdir(parents=True, exist_ok=True)
     return p

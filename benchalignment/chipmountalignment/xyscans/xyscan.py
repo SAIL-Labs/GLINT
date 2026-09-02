@@ -26,7 +26,7 @@ import glint_paths
 AXES = {'pitch': 1, 'roll': 2, 'yaw': 3, 'x': 4, 'z': 5, 'y': 6}
 
 PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'xyscans' / 'scanparameters.json')
-DARK_FILEPATH = str(glint_paths.CALIBRATION_ROOT / 'dark.fits')
+DARK_FILEPATH = str(glint_paths.DATA_ROOT / 'benchalignment' / 'spectraldark.fits')
 ANALYSIS_SCRIPT = str(glint_paths.CODE_ROOT / 'benchalignment' / 'chipmountalignment' / 'xyscans' / 'read_xyscan.py')
 
 # Keys required in scanparameters.json under "config". Checked up front so a
