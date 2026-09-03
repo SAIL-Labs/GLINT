@@ -32,7 +32,7 @@ PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'nul
 DARK_FILEPATH = str(glint_paths.DATA_ROOT / 'benchalignment' / 'spectraldark.fits')
 
 # Segments not being actively scanned are tilted away to this tip/tilt 
-TIP, TILT = -5.5, -4
+TIP, TILT = -5.5, -3
 
 # Keys required in scanparameters.json under "config". Checked up front so a
 # typo or missing field fails fast 
