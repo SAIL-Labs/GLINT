@@ -1,10 +1,10 @@
 {
   "mode": "instrument",
-  "output_root": "/home/scexao/glint/alignment_scan",
-  "camera_frame_root": "/home/scexao/glint/",
+  "output_root": "/home/scexao/glint/glintdata/alignment_scan",
+  "camera_frame_root": "/home/scexao/glint/glintdata",
   "command_logging": {
     "enabled": true,
-    "root": "/home/scexao/glint/alignment_scan/command_logs"
+    "root": "/home/scexao/glint/glintdata/alignment_scan/command_logs"
   },
   "time_scale": 1.0,
   "dm_display": {"tip_tilt_full_scale_mrad": 5.0, "piston_linthresh_um": 0.02},
@@ -61,8 +61,8 @@
       }
     },
     "focal_reference": {
-      "bright": "/home/scexao/glint/psf_pupil_alignment/20251021/psf_zerovolts.fits",
-      "dark": "/home/scexao/glint/psf_pupil_alignment/20251021/psf_dark.fits"
+      "bright": "/home/scexao/glint/glintdata/benchalignment/psf_pupil_frames/20260602/ir_irisclosed_psf_zerodm.fits",
+      "dark": "/home/scexao/glint/glintdata/benchalignment/psf_pupil_frames/20260602/dark_psf.fits"
     }
   },
   "conex": {
