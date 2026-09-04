@@ -1,0 +1,178 @@
+{
+  "mode": "instrument",
+  "output_root": "/home/scexao/glint/alignment_scan",
+  "camera_frame_root": "/home/scexao/glint/",
+  "command_logging": {
+    "enabled": true,
+    "root": "/home/scexao/glint/alignment_scan/command_logs"
+  },
+  "time_scale": 1.0,
+  "dm_display": {"tip_tilt_full_scale_mrad": 5.0, "piston_linthresh_um": 0.02},
+  "workflow": {"start_dm_state": "zero_ptt", "live_dm_refresh_s": 0.5},
+  "null_live": {"refresh_s": 10.0, "nframes": 25, "display_x": [200, 320]},
+  "mount_control": {
+    "fixed_roll": 1400.0,
+    "validated": true,
+    "comment": "Axis mapping is pitch=1, roll=2, yaw=3, x=4, z=5, y=6. Roll remains fixed at 1400 pulses.",
+    "advanced_default_steps": {
+      "pitch": 100.0,
+      "yaw": 100.0,
+      "roll": 100.0,
+      "x": 5.0,
+      "y": 5.0,
+      "z": 100.0
+    },
+    "limits": {
+      "pitch": [-500, 800],
+      "roll": [1000, 2000],
+      "yaw": [-500, 900],
+      "x": [-7500, 8000],
+      "z": [1100, 2500],
+      "y": [-4000, 9000]
+    }
+  },
+  "safety": {
+    "settle_s": 0.1,
+    "motion_timeout_s": 3.0
+  },
+  "instrument": {
+    "dm": {
+      "ptt_shm": "dmptt",
+      "voltage_shm": "dmvolt"
+    },
+    "shm": {
+      "apapane": "apapane",
+      "palila": "palila",
+      "pupil": "glintpg1",
+      "focal": "glintpg2"
+    },
+    "mount": {
+      "port": "/dev/serial/by-id/usb-SURUGA_SEIKI_SURUGA_SEIKI_DS102-if00-port0",
+      "baudrate": 38400,
+      "read_timeout_s": 1.0,
+      "write_timeout_s": 1.0,
+      "fallback_limits": {
+        "pitch": [-500, 800],
+        "roll": [1000, 2000],
+        "yaw": [-500, 900],
+        "x": [-7500, 8000],
+        "z": [1100, 2500],
+        "y": [-4000, 9000]
+      }
+    },
+    "focal_reference": {
+      "bright": "/home/scexao/glint/psf_pupil_alignment/20251021/psf_zerovolts.fits",
+      "dark": "/home/scexao/glint/psf_pupil_alignment/20251021/psf_dark.fits"
+    }
+  },
+  "conex": {
+    "executable": "glint_steering2",
+    "limits": {
+      "u": null,
+      "v": null
+    }
+  },
+  "steering_mirrors": {
+    "controlled_device": "glint_steering2",
+    "devices": {
+      "glint_steering1": {
+        "executable": "glint_steering1",
+        "command_enabled": false,
+        "recovery_position": {"u": 0.239, "v": 0.213}
+      },
+      "glint_steering2": {
+        "executable": "glint_steering2",
+        "command_enabled": true,
+        "recovery_position": {"u": 0.058, "v": -0.436}
+      }
+    }
+  },
+  "dm_voltage_states": {
+    "zero_volts": {"all_actuators_volts": 0.0, "validated": true},
+    "flat": {
+      "calibration_file": "config/32AW038_1500nm.txt",
+      "validated": false,
+      "comment": "Verify this 111-value calibrated flat-voltage file before enabling F0 on the telescope."
+    }
+  },
+  "dm_states": {
+    "zero_ptt": {
+      "validated": true,
+      "default": {"piston_um": 0.0, "tip_mrad": 0.0, "tilt_mrad": 0.0},
+      "segments": {}
+    },
+    "tilted_away": {
+      "validated": false,
+      "comment": "Replace these placeholders with the measured segment-specific away values before instrument use.",
+      "default": {"piston_um": 0.0, "tip_mrad": 5.0, "tilt_mrad": 0.0},
+      "segments": {}
+    },
+    "science_operation": {
+      "validated": false,
+      "comment": "Replace with the measured non-injected science-operation map before selecting it on the instrument.",
+      "default": {"piston_um": 0.0, "tip_mrad": 5.0, "tilt_mrad": 0.0},
+      "segments": {}
+    }
+  },
+  "rest_of_dm": {
+    "default_map": "scan_tilted_away",
+    "maps": {
+      "scan_tilted_away": {"label": "Scan tilted-away", "dm_state": "tilted_away"},
+      "all_flat": {"label": "All flat", "dm_state": "zero_ptt"},
+      "all_tilted": {
+        "label": "All tilted",
+        "dm_state": "tilted_away",
+        "editable_uniform_ptt": true,
+        "default_piston_um": 0.0,
+        "default_tip_mrad": 5.0,
+        "default_tilt_mrad": 0.0
+      },
+      "science_operation": {"label": "Science operation", "dm_state": "science_operation"}
+    }
+  },
+  "scans": {
+    "focal_dark": {"nframes": 5},
+    "apapane_dark": {"nframes": 1000},
+    "bulk": {
+      "nframes": 1,
+      "crop": [300, 800, 300, 800],
+      "centroid_threshold": 0.85,
+      "tolerance_px": 2.0,
+      "max_iterations": 10,
+      "trust_region_px": 100.0,
+      "max_backtracks": 4,
+      "max_condition": 10000.0,
+      "response_perturbation": [0.01, 0.01],
+      "response_matrix": "config/response_matrix.npy",
+      "initial_response_matrix": [[-243.06520251, -1752.00733876], [1867.75454865, -134.80274871]]
+    },
+    "set_z": {
+      "z": 1800.0,
+      "validated": false,
+      "comment": "Replace with the observing Z target and mark validated before telescope operation."
+    },
+    "pitch_yaw": {
+      "pitch": {"start": 300.0, "span": 500.0, "step": 50.0},
+      "yaw": {"start": -100.0, "span": 500.0, "step": 50.0},
+      "nframes": 1,
+      "agreement_pulses": 150.0
+    },
+    "xy": {
+      "x": {"start": 2990.0, "span": 100.0, "step": 5.0},
+      "y": {"start": 3390.0, "span": 100.0, "step": 5.0},
+      "nframes": 1,
+      "agreement_pulses": 150.0,
+      "com_threshold": 0.60
+    },
+    "tip_tilt": {
+      "tip": {"start": -1.0, "span": 2.0, "step": 0.1},
+      "tilt": {"start": -1.0, "span": 2.0, "step": 0.1},
+      "nframes": 10
+    },
+    "null": {
+      "piston": {"start": -1.3, "span": 2.6, "step": 0.05},
+      "nframes": 10,
+      "numavg": 5
+    }
+  }
+}

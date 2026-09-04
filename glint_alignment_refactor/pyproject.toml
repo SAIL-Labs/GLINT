@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glint-alignment"
+version = "0.4.6"
+description = "Reviewed, automatic six-axis GLINT alignment scans with a local simulator"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7", "astropy>=5.3", "pyserial>=3.5"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["glint_alignment*"]

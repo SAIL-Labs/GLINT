@@ -1,0 +1,60 @@
+{
+  "year": 2026,
+  "date": "05-05",
+  "iteration": 7,
+  "select_axes": [
+    "x",
+    "y"
+  ],
+  "step_size": [
+    5.0,
+    5.0
+  ],
+  "scan_range": [
+    100.0,
+    100.0
+  ],
+  "start_pos": [
+    2990.0,
+    3390.0
+  ],
+  "peaks": [
+    243,
+    224,
+    205
+  ],
+  "boundingvals": [
+    218,
+    267
+  ],
+  "box_halfwidth": 2,
+  "iscred1": true,
+  "x": 2994.824,
+  "y": 3394.801,
+  "xy_centroids": {
+    "1": {
+      "x": 2996.441,
+      "y": 3395.07,
+      "method_used": "centroid",
+      "pixel_x_index": 1.2881139944392956,
+      "pixel_y_index": 1.0139017608897127,
+      "peak_value": 285.56100058788434
+    },
+    "2": {
+      "x": 2993.467,
+      "y": 3394.952,
+      "method_used": "centroid",
+      "pixel_x_index": 0.6934523809523809,
+      "pixel_y_index": 0.9904448621553885,
+      "peak_value": 1390.7709989510477
+    },
+    "3": {
+      "x": 2994.564,
+      "y": 3394.381,
+      "method_used": "centroid",
+      "pixel_x_index": 0.9127853881278539,
+      "pixel_y_index": 0.8761415525114156,
+      "peak_value": 2149.3829982876778
+    }
+  }
+}

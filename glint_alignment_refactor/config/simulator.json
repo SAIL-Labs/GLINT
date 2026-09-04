@@ -1,0 +1,135 @@
+{
+  "mode": "simulation",
+  "output_root": "./alignment_scan",
+  "camera_frame_root": "./simulated_camera_frames",
+  "command_logging": {"enabled": true, "root": "./alignment_scan/command_logs"},
+  "time_scale": 0.02,
+  "dm_display": {"tip_tilt_full_scale_mrad": 5.0, "piston_linthresh_um": 0.02},
+  "workflow": {"start_dm_state": "zero_ptt", "live_dm_refresh_s": 0.5},
+  "null_live": {"refresh_s": 10.0, "nframes": 25, "display_x": [200, 320]},
+  "mount_control": {
+    "fixed_roll": 1400.0,
+    "validated": true,
+    "advanced_default_steps": {
+      "pitch": 100.0,
+      "yaw": 100.0,
+      "roll": 100.0,
+      "x": 5.0,
+      "y": 5.0,
+      "z": 100.0
+    },
+    "limits": {
+      "pitch": [-500, 800],
+      "roll": [1000, 2000],
+      "yaw": [-500, 900],
+      "x": [-7500, 8000],
+      "z": [1100, 2500],
+      "y": [-4000, 9000]
+    }
+  },
+  "simulation": {"seed": 4217, "noise": 1.0, "fast_average": true, "initial_dm_state": "tilted_away"},
+  "safety": {"settle_s": 0.1, "motion_timeout_s": 3.0},
+  "conex": {"executable": "glint_steering2", "limits": {"u": [-0.5, 0.5], "v": [-0.5, 0.5]}},
+  "steering_mirrors": {
+    "controlled_device": "glint_steering2",
+    "devices": {
+      "glint_steering1": {
+        "executable": "glint_steering1",
+        "command_enabled": false,
+        "recovery_position": {"u": 0.239, "v": 0.213}
+      },
+      "glint_steering2": {
+        "executable": "glint_steering2",
+        "command_enabled": true,
+        "recovery_position": {"u": 0.058, "v": -0.436}
+      }
+    }
+  },
+  "dm_voltage_states": {
+    "zero_volts": {"all_actuators_volts": 0.0, "validated": true},
+    "flat": {"all_actuators_volts": 0.25, "validated": true}
+  },
+  "dm_states": {
+    "zero_ptt": {
+      "validated": true,
+      "default": {"piston_um": 0.0, "tip_mrad": 0.0, "tilt_mrad": 0.0},
+      "segments": {}
+    },
+    "tilted_away": {
+      "validated": true,
+      "default": {"piston_um": 0.0, "tip_mrad": 5.0, "tilt_mrad": 0.0},
+      "segments": {
+        "0": {"tip_mrad": 4.8, "tilt_mrad": 0.3},
+        "1": {"tip_mrad": 5.1, "tilt_mrad": -0.2},
+        "11": {"tip_mrad": 5.0, "tilt_mrad": 0.1},
+        "20": {"tip_mrad": 4.9, "tilt_mrad": -0.1},
+        "31": {"tip_mrad": 5.2, "tilt_mrad": 0.2}
+      }
+    },
+    "science_operation": {
+      "validated": true,
+      "default": {"piston_um": 0.0, "tip_mrad": 4.0, "tilt_mrad": -2.5},
+      "segments": {
+        "0": {"tip_mrad": 3.8, "tilt_mrad": -2.3},
+        "1": {"tip_mrad": 4.2, "tilt_mrad": -2.7}
+      }
+    }
+  },
+  "rest_of_dm": {
+    "default_map": "scan_tilted_away",
+    "maps": {
+      "scan_tilted_away": {"label": "Scan tilted-away", "dm_state": "tilted_away"},
+      "all_flat": {"label": "All flat", "dm_state": "zero_ptt"},
+      "all_tilted": {
+        "label": "All tilted",
+        "dm_state": "tilted_away",
+        "editable_uniform_ptt": true,
+        "default_piston_um": 0.0,
+        "default_tip_mrad": 5.0,
+        "default_tilt_mrad": 0.0
+      },
+      "science_operation": {"label": "Science operation", "dm_state": "science_operation"}
+    }
+  },
+  "scans": {
+    "focal_dark": {"nframes": 5},
+    "apapane_dark": {"nframes": 1000},
+    "bulk": {
+      "nframes": 1,
+      "crop": [300, 800, 300, 800],
+      "centroid_threshold": 0.85,
+      "tolerance_px": 2.0,
+      "max_iterations": 10,
+      "trust_region_px": 100.0,
+      "max_backtracks": 4,
+      "max_condition": 10000.0,
+      "response_perturbation": [0.01, 0.01],
+      "response_matrix": "config/response_matrix.npy",
+      "initial_response_matrix": [[-243.06520251, -1752.00733876], [1867.75454865, -134.80274871]]
+    },
+    "set_z": {"z": 1800.0, "validated": true},
+    "pitch_yaw": {
+      "pitch": {"start": 300.0, "span": 500.0, "step": 50.0},
+      "yaw": {"start": -100.0, "span": 500.0, "step": 50.0},
+      "nframes": 1,
+      "agreement_pulses": 150.0
+    },
+    "xy": {
+      "x": {"start": 2990.0, "span": 100.0, "step": 5.0},
+      "y": {"start": 3390.0, "span": 100.0, "step": 5.0},
+      "nframes": 1,
+      "agreement_pulses": 150.0,
+      "com_threshold": 0.60
+    },
+    "tip_tilt": {
+      "tip": {"start": -1.0, "span": 2.0, "step": 0.1},
+      "tilt": {"start": -1.0, "span": 2.0, "step": 0.1},
+      "nframes": 10
+    },
+    "null": {
+      "piston": {"start": -1.3, "span": 2.6, "step": 0.05},
+      "nframes": 10,
+      "numavg": 5
+    }
+  }
+}
