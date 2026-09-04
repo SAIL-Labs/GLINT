@@ -7,22 +7,20 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+from scipy.signal import find_peaks
 
 from .analysis import (
     agreement,
     fit_elliptical_gaussian,
-    fit_null_envelope,
     hotspot,
     solve_common_pistons,
     threshold_center_of_mass,
 )
 from .boxes import (
-    BASELINE_TO_NULL,
-    FRINGE_TRACKING_BOXES,
     INJECTED_SEGMENTS,
-    NULL_BOXES,
     PHOT_BOXES,
     SEGMENT_TO_PHOT,
+    differential_null_boxes,
     integrate_box,
 )
 from .config import rest_dm_maps, rest_dm_state, segment_state
@@ -199,6 +197,24 @@ class AlignmentEngine:
         for key in ("nframes", "numavg", "max_iterations"):
             if key in parameters and int(parameters[key]) < 1:
                 raise ValueError(f"{key} must be at least 1")
+        if "settle_s" in parameters:
+            settle_s = float(parameters["settle_s"])
+            if not np.isfinite(settle_s) or settle_s < 0:
+                raise ValueError("settle_s must be a finite non-negative value")
+        if kind == "null":
+            period_bounds = np.asarray(parameters.get("period_bounds_um", (1.2, 2.0)), dtype=float)
+            if (
+                period_bounds.shape != (2,)
+                or not np.all(np.isfinite(period_bounds))
+                or not 0 < period_bounds[0] < period_bounds[1]
+            ):
+                raise ValueError("period_bounds_um must contain two increasing positive OPD periods")
+            min_fit_r2 = float(parameters.get("min_fit_r2", 0.35))
+            if not np.isfinite(min_fit_r2) or not 0 <= min_fit_r2 <= 1:
+                raise ValueError("min_fit_r2 must lie in [0, 1]")
+            max_invalid_fraction = float(parameters.get("max_invalid_fraction", 0.05))
+            if not np.isfinite(max_invalid_fraction) or not 0 <= max_invalid_fraction < 1:
+                raise ValueError("max_invalid_fraction must lie in [0, 1)")
 
     def set_dm_segment(self, segment: int, piston_um: float, tip_mrad: float, tilt_mrad: float) -> None:
         """Apply one edited segment while preserving every other live segment."""
@@ -235,10 +251,21 @@ class AlignmentEngine:
         if self._abort.is_set():
             raise ScanCancelled("Scan aborted by user")
 
-    def _settle(self) -> None:
-        delay = float(self.config["safety"]["settle_s"])
+    def _settle(self, delay_s: float | None = None) -> None:
+        """Wait for optical/DM settling after a verified command.
+
+        Scan-specific delays are explicit in the JSON configuration.  The
+        global safety value remains the fallback for manual actions and older
+        configuration files.
+        """
+        delay = float(self.config["safety"]["settle_s"] if delay_s is None else delay_s)
+        if delay < 0:
+            raise ValueError("Settling time cannot be negative")
         time.sleep(delay * float(self.config.get("time_scale", 1.0)))
         self._check_abort()
+
+    def _scan_settle(self, parameters: dict) -> float:
+        return float(parameters.get("settle_s", self.config["safety"]["settle_s"]))
 
     def _snapshot_metadata(self) -> dict:
         return {
@@ -259,6 +286,7 @@ class AlignmentEngine:
         raise ValueError(f"Expected a 2-D frame or 3-D frame cube, got {values.shape}")
 
     def acquire_dark(self, camera: str, nframes: int = 25) -> ScanResult:
+        started = time.perf_counter()
         command_log_start = self.hardware.command_log_marker()
         self.reset_abort()
         if camera not in {"focal", "apapane"}:
@@ -283,6 +311,7 @@ class AlignmentEngine:
             maps={"dark": dark},
             metadata={"nframes": nframes, "state_at_completion": self._snapshot_metadata()},
         )
+        result.metadata["runtime"] = {"acquisition_s": time.perf_counter() - started}
         result.metadata["command_log_start_sequence"] = command_log_start
         return result
 
@@ -293,13 +322,19 @@ class AlignmentEngine:
         keep_dm_ptt_on_success: bool = False,
         keep_dm_volts_on_success: bool = False,
     ) -> ScanResult:
+        guarded_started = time.perf_counter()
         command_log_start = self.hardware.command_log_marker()
         self.reset_abort()
-        # Every scan snapshot and restoration uses the same configured roll.
-        self.ensure_fixed_roll()
+        # Refresh all mount axes before trusting the verified-position cache.
+        # The pre-scan recovery target deliberately uses the configured fixed
+        # roll even if an external process changed roll while this GUI was idle.
         before = self.hardware.snapshot()
+        before.mount["roll"] = self.fixed_roll()
         try:
+            self.ensure_fixed_roll()
+            operation_started = time.perf_counter()
             result = operation()
+            operation_elapsed = time.perf_counter() - operation_started
         except BaseException:
             self.log("Restoring pre-scan state")
             self.hardware.restore(before, float(self.config["safety"]["motion_timeout_s"]))
@@ -319,6 +354,9 @@ class AlignmentEngine:
         result.metadata["dm_ptt_retained_after_scan"] = keep_dm_ptt_on_success
         result.metadata["state_at_completion"] = self._snapshot_metadata()
         result.metadata["command_log_start_sequence"] = command_log_start
+        runtime = result.metadata.setdefault("runtime", {})
+        runtime["scan_operation_s"] = operation_elapsed
+        runtime["guarded_total_s"] = time.perf_counter() - guarded_started
         return result
 
     def restore_review_state(self, result: ScanResult) -> None:
@@ -336,6 +374,7 @@ class AlignmentEngine:
 
         def operation() -> ScanResult:
             bulk = self.config["scans"]["bulk"]
+            settle_s = self._scan_settle(bulk)
             self.hardware.zero_dm_volts()
             reference_bright, reference_dark = self.hardware.focal_reference()
             goal = hotspot(reference_bright - reference_dark, bulk["crop"], bulk["centroid_threshold"])
@@ -372,7 +411,7 @@ class AlignmentEngine:
                     trial_theta = theta + fraction * step
                     self._check_conex_limits(trial_theta)
                     self.hardware.move_conex({"u": trial_theta[0], "v": trial_theta[1]})
-                    self._settle()
+                    self._settle(settle_s)
                     trial_image = self._average_frame(self.hardware.focal_frames(int(bulk["nframes"]))) - self.focal_dark
                     trial_position = hotspot(trial_image, bulk["crop"], bulk["centroid_threshold"])
                     trial_error = float(np.linalg.norm(goal - trial_position))
@@ -401,7 +440,12 @@ class AlignmentEngine:
                     "error_px": final_error,
                     "passed": bool(final_error <= float(bulk["tolerance_px"])),
                 },
-                metadata={"dm_voltage_state": "zero_volts"},
+                metadata={
+                    "dm_voltage_state": "zero_volts",
+                    "parameters": bulk,
+                    "sample_count": len(history),
+                    "settle_s_per_motion": settle_s,
+                },
             )
 
         return self._guarded(operation, keep_dm_volts_on_success=True)
@@ -429,12 +473,12 @@ class AlignmentEngine:
                 trial[axis] += sign * perturb[axis]
                 self._check_conex_limits(trial)
                 self.hardware.move_conex({"u": trial[0], "v": trial[1]})
-                self._settle()
+                self._settle(self._scan_settle(bulk))
                 frame = self._average_frame(self.hardware.focal_frames(int(bulk["nframes"]))) - self.focal_dark
                 positions.append(hotspot(frame, bulk["crop"], bulk["centroid_threshold"]))
             response[:, axis] = (positions[1] - positions[0]) / (2 * perturb[axis])
         self.hardware.move_conex({"u": theta[0], "v": theta[1]})
-        self._settle()
+        self._settle(self._scan_settle(bulk))
         return response
 
     def _check_conex_limits(self, theta: np.ndarray) -> None:
@@ -489,11 +533,16 @@ class AlignmentEngine:
         actual_y = np.zeros((len(yv), len(xv)), dtype=float)
         total = len(xv) * len(yv)
         count = 0
+        settle_s = self._scan_settle(params)
         for iy, y in enumerate(yv):
-            for ix, x in enumerate(xv):
-                self._move_mount({x_axis: x, y_axis: y})
-                self._settle()
-                readback = self.hardware.get_mount()
+            # A serpentine raster avoids the long return to the first X value at
+            # every row boundary. The array indices remain in ascending physical
+            # coordinates, so fitting and saved products are unchanged.
+            x_indices = range(len(xv)) if iy % 2 == 0 else range(len(xv) - 1, -1, -1)
+            for ix in x_indices:
+                x = xv[ix]
+                readback = self._move_mount({x_axis: x, y_axis: y})
+                self._settle(settle_s)
                 actual_x[iy, ix] = readback[x_axis]
                 actual_y[iy, ix] = readback[y_axis]
                 frame = self._average_frame(self.hardware.apapane_frames(int(params["nframes"]))) - self.apapane_dark
@@ -517,7 +566,12 @@ class AlignmentEngine:
             maps=maps,
             estimates={"channels": estimates, "agreement": check},
             recommendation={x_axis: check["x"], y_axis: check["y"], "passed": check["passed"]},
-            metadata={"parameters": params},
+            metadata={
+                "parameters": params,
+                "sample_count": total,
+                "settle_s_per_sample": settle_s,
+                "raster_path": "serpentine",
+            },
         )
 
     def tip_tilt_scan(self, parameters: dict | None = None) -> ScanResult:
@@ -536,16 +590,19 @@ class AlignmentEngine:
             count = 0
             away = self._scan_away_state()
             zero = segment_state(self.config, "zero_ptt")
+            settle_s = self._scan_settle(params)
             for segment in INJECTED_SEGMENTS:
                 state = deepcopy(away)
                 state[segment] = deepcopy(zero[segment])
                 self.hardware.set_dm(state)
                 data = np.zeros((len(tilts), len(tips)), dtype=float)
                 for iy, tilt in enumerate(tilts):
-                    for ix, tip in enumerate(tips):
+                    tip_indices = range(len(tips)) if iy % 2 == 0 else range(len(tips) - 1, -1, -1)
+                    for ix in tip_indices:
+                        tip = tips[ix]
                         state[segment] = SegmentPTT(0.0, float(tip), float(tilt))
                         self.hardware.set_dm(state)
-                        self._settle()
+                        self._settle(settle_s)
                         frame = self._average_frame(self.hardware.apapane_frames(int(params["nframes"]))) - self.apapane_dark
                         data[iy, ix] = integrate_box(frame, PHOT_BOXES[SEGMENT_TO_PHOT[segment]])
                         count += 1
@@ -565,7 +622,13 @@ class AlignmentEngine:
                     },
                     "passed": not any(bool(value.get("boundary")) for value in estimates.values()),
                 },
-                metadata={"parameters": params, "rest_of_dm": self.rest_dm_selection()},
+                metadata={
+                    "parameters": params,
+                    "rest_of_dm": self.rest_dm_selection(),
+                    "sample_count": total,
+                    "settle_s_per_sample": settle_s,
+                    "raster_path": "serpentine",
+                },
             )
 
         return self._guarded(operation)
@@ -580,56 +643,106 @@ class AlignmentEngine:
                 raise RuntimeError("Acquire an APAPANE dark before null scans")
             minimum = float(params["piston"]["start"])
             maximum = minimum + float(params["piston"]["span"])
-            ascending = AxisGrid(**params["piston"]).values()
-            descending = ascending[-2::-1]
+            piston_step = float(params["piston"]["step"])
+            differential_positions = AxisGrid(
+                start=minimum - maximum,
+                span=2.0 * (maximum - minimum),
+                step=piston_step,
+            ).values()
             baselines = [(11, 20), (11, 31)]
             maps: dict[str, np.ndarray] = {}
             estimates: dict[str, dict] = {}
-            total = len(baselines) * int(params["numavg"]) * (len(ascending) + len(descending))
+            total = len(baselines) * int(params["numavg"]) * len(differential_positions)
             progress_count = 0
             current = self.hardware.get_dm()
-            away = self._scan_away_state()
-            for baseline in baselines:
-                a, b = baseline
-                null_name = BASELINE_TO_NULL[baseline]
-                deltas: list[float] = []
-                repetitions: list[list[float]] = []
-                for repeat in range(int(params["numavg"])):
-                    metrics: list[float] = []
-                    repeat_deltas: list[float] = []
-                    state = deepcopy(away)
-                    for seg in baseline:
-                        state[seg] = deepcopy(current[seg])
-                    state[a].piston_um = minimum
-                    state[b].piston_um = maximum
-                    for piston_a in ascending:
-                        state[a].piston_um = float(piston_a)
-                        self.hardware.set_dm(state)
-                        self._settle()
-                        metrics.append(self._null_metric(null_name, int(params["nframes"])))
-                        repeat_deltas.append(float(state[a].piston_um - state[b].piston_um))
-                        progress_count += 1
-                        self.progress(f"Null {a}-{b}, repeat {repeat + 1}", progress_count, total)
-                    for piston_b in descending:
-                        state[b].piston_um = float(piston_b)
-                        self.hardware.set_dm(state)
-                        self._settle()
-                        metrics.append(self._null_metric(null_name, int(params["nframes"])))
-                        repeat_deltas.append(float(state[a].piston_um - state[b].piston_um))
-                        progress_count += 1
-                        self.progress(f"Null {a}-{b}, repeat {repeat + 1}", progress_count, total)
-                    if not deltas:
-                        deltas = repeat_deltas
-                    repetitions.append(metrics)
-                mean_metric = np.mean(repetitions, axis=0)
-                opd = 2.0 * np.asarray(deltas)
-                fit = fit_null_envelope(opd, mean_metric)
-                key = f"{a}-{b}"
-                maps[key] = np.asarray(repetitions)
-                estimates[key] = fit
-                estimates[key]["opd_um"] = opd
-                estimates[key]["mean_metric"] = mean_metric
-            solution = solve_common_pistons(
+            reference = segment_state(self.config, "zero_ptt")
+            base_state = self._rest_dm_state()
+            scan_boxes = differential_null_boxes()
+            # Match the working telescope script: all three injected segments
+            # retain the tip/tilt found by step 7, including the segment not in
+            # the current baseline.  Their scan-reference pistons come from PTT0.
+            for segment in INJECTED_SEGMENTS:
+                base_state[segment] = deepcopy(current[segment])
+                base_state[segment].piston_um = float(reference[segment].piston_um)
+            settle_s = self._scan_settle(params)
+            simulator_selector = getattr(self.hardware, "set_null_scan_baseline", None)
+            try:
+                for baseline in baselines:
+                    a, b = baseline
+                    box = scan_boxes[baseline]
+                    if simulator_selector is not None:
+                        simulator_selector(baseline)
+                    repetitions: list[list[float]] = []
+                    best_per_repeat: list[dict[str, float | int | str]] = []
+                    for repeat in range(int(params["numavg"])):
+                        state = deepcopy(base_state)
+                        fluxes: list[float] = []
+                        for differential in differential_positions:
+                            piston_a, piston_b = self._pair_pistons_for_differential(
+                                float(differential),
+                                minimum,
+                                maximum,
+                                float(reference[a].piston_um),
+                                float(reference[b].piston_um),
+                            )
+                            state[a].piston_um = piston_a
+                            state[b].piston_um = piston_b
+                            self.hardware.set_dm(state)
+                            self._settle(settle_s)
+                            fluxes.append(self._null_flux(box, int(params["nframes"])))
+                            progress_count += 1
+                            self.progress(f"Null {a}-{b}, repeat {repeat + 1}", progress_count, total)
+                        repetitions.append(fluxes)
+                        best_per_repeat.append(
+                            self._parabolic_minimum(differential_positions, np.asarray(fluxes, dtype=float))
+                        )
+                    repetition_array = np.asarray(repetitions, dtype=float)
+                    mean_flux = np.mean(repetition_array, axis=0)
+                    # Select from the curve shown in the review.  Averaging the
+                    # independently selected positions is invalid for a
+                    # periodic scan: different repeats may choose neighbouring
+                    # fringe orders and their arithmetic mean can lie on a
+                    # maximum.  Individual minima remain saved as diagnostics.
+                    candidates = self._null_minimum_candidates(
+                        differential_positions,
+                        mean_flux,
+                        period_bounds_um=params.get("period_bounds_um", (1.2, 2.0)),
+                    )
+                    candidate = candidates[0]
+                    combined_best = {
+                        "best_diff_piston_um": candidate["delta_piston_um"],
+                        "best_opd_um": candidate["opd_um"],
+                        "best_flux": candidate["metric"],
+                        "sample_min_diff_piston_um": candidate["sample_diff_piston_um"],
+                        "sample_min_flux": candidate["sample_flux"],
+                        "sample_min_index": candidate["sample_index"],
+                        "method_used": candidate["refinement_method"],
+                    }
+                    key = f"{a}-{b}"
+                    maps[key] = repetition_array
+                    estimates[key] = {
+                        "model": "measured raw-flux minimum",
+                        "fit_ok": True,
+                        "fit_warning": "",
+                        "method": "parabolic three-sample minimum with measured-sample fallback",
+                        "detector_box": list(box),
+                        "opd_um": 2.0 * differential_positions,
+                        "differential_piston_um": differential_positions,
+                        "mean_metric": mean_flux,
+                        "best_per_repeat": best_per_repeat,
+                        "averaged_curve_minimum": combined_best,
+                        # Candidate zero is the deepest minimum of the averaged
+                        # curve. Further entries are neighbouring fringe
+                        # minima, ordered by distance from that minimum. They
+                        # are used only when the deepest-minimum pair cannot be
+                        # represented inside all three DM piston ranges.
+                        "candidates": candidates,
+                        "best": candidate,
+                    }
+            finally:
+                if simulator_selector is not None:
+                    simulator_selector(None)
+            solution = self._solve_null_pistons_with_neighbours(
                 estimates["11-20"]["candidates"],
                 estimates["11-31"]["candidates"],
                 minimum,
@@ -637,7 +750,10 @@ class AlignmentEngine:
             )
             return ScanResult(
                 kind="null",
-                axes={"delta_piston_um": np.asarray(deltas), "opd_um": 2 * np.asarray(deltas)},
+                axes={
+                    "delta_piston_um": differential_positions,
+                    "opd_um": 2.0 * differential_positions,
+                },
                 maps=maps,
                 estimates=estimates,
                 recommendation={**solution, "passed": bool(solution["feasible"])},
@@ -645,17 +761,223 @@ class AlignmentEngine:
                     "parameters": params,
                     "baseline_20_31": "disabled",
                     "rest_of_dm": self.rest_dm_selection(),
+                    "sample_count": total,
+                    "settle_s_per_sample": settle_s,
+                    "scan_sequence": "Differential piston minimum-to-maximum with both baseline segments moved symmetrically",
+                    "opd_definition": "2 * (piston_first - piston_second)",
+                    "measurement_definition": "dark-subtracted integrated raw null-channel flux",
+                    "injected_dm_state": "all three retain current optimized tip/tilt; third piston held at zero-PTT reference",
                 },
             )
 
         return self._guarded(operation)
 
-    def _null_metric(self, null_name: str, nframes: int) -> float:
+    @staticmethod
+    def _pair_pistons_for_differential(
+        differential: float,
+        minimum: float,
+        maximum: float,
+        reference_a: float,
+        reference_b: float,
+    ) -> tuple[float, float]:
+        """Choose pA/pB with pA-pB=d and a near-reference common piston."""
+        common_low = max(minimum - differential / 2.0, minimum + differential / 2.0)
+        common_high = min(maximum - differential / 2.0, maximum + differential / 2.0)
+        if common_low > common_high + 1e-12:
+            raise ValueError(f"Differential piston {differential:g} is outside the feasible range")
+        desired_common = 0.5 * (reference_a + reference_b)
+        common = float(np.clip(desired_common, common_low, common_high))
+        return float(common + differential / 2.0), float(common - differential / 2.0)
+
+    @staticmethod
+    def _parabolic_minimum(x: np.ndarray, y: np.ndarray) -> dict[str, float | int | str]:
+        """Working-script minimum: sample minimum plus a local 3-point parabola."""
+        values_x = np.asarray(x, dtype=float)
+        values_y = np.asarray(y, dtype=float)
+        if values_x.shape != values_y.shape or values_x.ndim != 1 or len(values_x) == 0:
+            raise ValueError("Null coordinates and flux must be equal non-empty 1-D arrays")
+        index = int(np.nanargmin(values_y))
+        return AlignmentEngine._parabolic_minimum_at_index(values_x, values_y, index)
+
+    @classmethod
+    def _null_minimum_candidates(
+        cls,
+        x: np.ndarray,
+        y: np.ndarray,
+        *,
+        period_bounds_um: tuple[float, float] | list[float] = (1.2, 2.0),
+    ) -> list[dict[str, float | int | str]]:
+        """Return the deepest and neighbouring minima of an averaged null scan.
+
+        ``x`` is differential DM piston, while the configured period bounds
+        are optical-path difference. Peak separation is therefore converted
+        by OPD = 2 * differential piston. A small prominence requirement
+        rejects sample-scale noise without imposing a sinusoidal fit.
+        """
+        values_x = np.asarray(x, dtype=float)
+        values_y = np.asarray(y, dtype=float)
+        if values_x.shape != values_y.shape or values_x.ndim != 1 or len(values_x) == 0:
+            raise ValueError("Null coordinates and flux must be equal non-empty 1-D arrays")
+        if not np.all(np.isfinite(values_x)) or not np.all(np.isfinite(values_y)):
+            raise ValueError("Null coordinates and averaged flux must be finite")
+
+        global_index = int(np.argmin(values_y))
+        if len(values_x) > 1:
+            step = float(np.median(np.diff(values_x)))
+            if not np.isfinite(step) or step <= 0:
+                raise ValueError("Null differential-piston coordinates must be strictly increasing")
+            lower_opd_period = float(period_bounds_um[0])
+            # Half of the shortest expected differential-piston fringe period
+            # prevents small ripples from masquerading as adjacent fringes.
+            minimum_distance = max(1, int(round(lower_opd_period / (4.0 * step))))
+        else:
+            minimum_distance = 1
+        flux_span = float(np.ptp(values_y))
+        prominence = 0.03 * flux_span if flux_span > 0 else None
+        indices, _ = find_peaks(
+            -values_y,
+            distance=minimum_distance,
+            prominence=prominence,
+        )
+        index_list = [int(index) for index in indices]
+        if global_index not in index_list:
+            index_list.append(global_index)
+        index_list.sort()
+        global_position = index_list.index(global_index)
+
+        candidates: list[dict[str, float | int | str]] = []
+        for position, index in enumerate(index_list):
+            refined = cls._parabolic_minimum_at_index(values_x, values_y, index)
+            order = abs(position - global_position)
+            side = "deepest" if order == 0 else ("left" if position < global_position else "right")
+            candidates.append(
+                {
+                    "opd_um": 2.0 * float(refined["best_diff_piston_um"]),
+                    "delta_piston_um": float(refined["best_diff_piston_um"]),
+                    "metric": float(refined["best_flux"]),
+                    "sample_index": int(index),
+                    "sample_diff_piston_um": float(values_x[index]),
+                    "sample_flux": float(values_y[index]),
+                    "refinement_method": str(refined["method_used"]),
+                    "neighbour_order": int(order),
+                    "neighbour_side": side,
+                }
+            )
+        candidates.sort(key=lambda item: (int(item["neighbour_order"]), float(item["metric"])))
+        return candidates
+
+    @staticmethod
+    def _parabolic_minimum_at_index(
+        x: np.ndarray,
+        y: np.ndarray,
+        index: int,
+    ) -> dict[str, float | int | str]:
+        """Refine one selected sample minimum without changing fringe order."""
+        values_x = np.asarray(x, dtype=float)
+        values_y = np.asarray(y, dtype=float)
+        if values_x.shape != values_y.shape or values_x.ndim != 1 or len(values_x) == 0:
+            raise ValueError("Null coordinates and flux must be equal non-empty 1-D arrays")
+        if index < 0 or index >= len(values_x):
+            raise IndexError("Null minimum index is outside the sampled curve")
+        best_x = float(values_x[index])
+        best_y = float(values_y[index])
+        method = "sample_min"
+        if 0 < index < len(values_x) - 1:
+            local_x = values_x[index - 1 : index + 2]
+            local_y = values_y[index - 1 : index + 2]
+            if np.all(np.isfinite(local_x)) and np.all(np.isfinite(local_y)):
+                curvature, linear, constant = np.polyfit(local_x, local_y, 2)
+                if curvature > 0:
+                    vertex = float(-linear / (2.0 * curvature))
+                    if local_x[0] <= vertex <= local_x[-1]:
+                        best_x = vertex
+                        best_y = float(curvature * vertex**2 + linear * vertex + constant)
+                        method = "parabolic"
+        return {
+            "best_diff_piston_um": best_x,
+            "best_opd_um": 2.0 * best_x,
+            "best_flux": best_y,
+            "sample_min_diff_piston_um": float(values_x[index]),
+            "sample_min_flux": float(values_y[index]),
+            "sample_min_index": index,
+            "method_used": method,
+        }
+
+    @staticmethod
+    def _solve_null_pistons_with_neighbours(
+        candidates_1120: list[dict],
+        candidates_1131: list[dict],
+        minimum: float,
+        maximum: float,
+    ) -> dict[str, object]:
+        """Use deepest minima first, expanding to neighbours only if required."""
+        primary_1120 = [item for item in candidates_1120 if int(item.get("neighbour_order", 0)) == 0]
+        primary_1131 = [item for item in candidates_1131 if int(item.get("neighbour_order", 0)) == 0]
+        primary = solve_common_pistons(primary_1120, primary_1131, minimum, maximum)
+        if primary["feasible"]:
+            return {
+                **primary,
+                "fallback_attempted": False,
+                "fallback_used": False,
+                "selection_mode": "deepest averaged-curve minima",
+                "selected_neighbour_order": {"11-20": 0, "11-31": 0},
+            }
+
+        maximum_order = max(
+            [int(item.get("neighbour_order", 0)) for item in candidates_1120 + candidates_1131],
+            default=0,
+        )
+        for order in range(1, maximum_order + 1):
+            pool_1120 = [item for item in candidates_1120 if int(item.get("neighbour_order", 0)) <= order]
+            pool_1131 = [item for item in candidates_1131 if int(item.get("neighbour_order", 0)) <= order]
+            solution = solve_common_pistons(pool_1120, pool_1131, minimum, maximum)
+            if solution["feasible"]:
+                selected_orders = {
+                    "11-20": next(
+                        int(item.get("neighbour_order", 0))
+                        for item in pool_1120
+                        if np.isclose(
+                            float(item["delta_piston_um"]),
+                            float(solution["delta_11_20_um"]),
+                            atol=1e-10,
+                        )
+                    ),
+                    "11-31": next(
+                        int(item.get("neighbour_order", 0))
+                        for item in pool_1131
+                        if np.isclose(
+                            float(item["delta_piston_um"]),
+                            float(solution["delta_11_31_um"]),
+                            atol=1e-10,
+                        )
+                    ),
+                }
+                return {
+                    **solution,
+                    "fallback_attempted": True,
+                    "fallback_used": True,
+                    "fallback_level": int(order),
+                    "fallback_reason": primary["reason"],
+                    "selection_mode": "automatic neighbouring-minimum DM-range fallback",
+                    "selected_neighbour_order": selected_orders,
+                }
+
+        return {
+            "feasible": False,
+            "passed": False,
+            "reason": (
+                f"{primary['reason']} The deepest minimum and {maximum_order} neighbouring "
+                "fringe order(s) were checked automatically."
+            ),
+            "fallback_attempted": True,
+            "fallback_used": False,
+            "fallback_level": int(maximum_order),
+            "selection_mode": "no feasible measured minimum",
+        }
+
+    def _null_flux(self, box: list[int], nframes: int) -> float:
         frame = self._average_frame(self.hardware.apapane_frames(nframes)) - self.apapane_dark
-        null_flux = integrate_box(frame, NULL_BOXES[null_name])
-        ft = FRINGE_TRACKING_BOXES[null_name]
-        denominator = integrate_box(frame, ft["FT1"]) + integrate_box(frame, ft["FT2"])
-        return float(null_flux / max(denominator, 1e-12))
+        return float(integrate_box(frame, box))
 
     def _validated_mount_targets(self, targets: dict[str, float]) -> dict[str, float]:
         targets = {axis: float(value) for axis, value in targets.items()}
@@ -672,9 +994,9 @@ class AlignmentEngine:
                 raise ValueError(f"{axis} target {target} outside [{lower}, {upper}]")
         return targets
 
-    def _move_mount(self, targets: dict[str, float]) -> None:
+    def _move_mount(self, targets: dict[str, float]) -> dict[str, float]:
         targets = self._validated_mount_targets(targets)
-        self.hardware.move_mount(targets, float(self.config["safety"]["motion_timeout_s"]))
+        return self.hardware.move_mount(targets, float(self.config["safety"]["motion_timeout_s"]))
 
     def set_z_scan(self, parameters: dict | None = None) -> ScanResult:
         command_log_start = self.hardware.command_log_marker()

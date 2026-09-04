@@ -34,7 +34,8 @@ class AlignmentHardware(ABC):
     def get_mount(self) -> dict[str, float]: ...
 
     @abstractmethod
-    def move_mount(self, targets: dict[str, float], timeout_s: float) -> None: ...
+    def move_mount(self, targets: dict[str, float], timeout_s: float) -> dict[str, float]:
+        """Move requested axes and return their verified positions."""
 
     @abstractmethod
     def mount_limits(self) -> dict[str, tuple[float, float]]: ...

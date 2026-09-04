@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from scipy.optimize import curve_fit
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, hilbert
 
 
 def threshold_center_of_mass(
@@ -141,45 +141,173 @@ def hotspot(image: np.ndarray, crop: list[int] | tuple[int, int, int, int], frac
     return np.asarray([float(ix) + x0, float(iy) + y0])
 
 
-def _null_model(x, c0, c1, amplitude, center, sigma, period, phase):
-    envelope = np.exp(-0.5 * ((x - center) / sigma) ** 2)
-    return c0 + c1 * x + amplitude * envelope * np.cos(2 * np.pi * x / period + phase)
+def _null_sinc_model(x, c0, c1, amplitude, center, coherence_width, period, phase):
+    """Rectangular-band coherence envelope multiplied by a monochromatic fringe.
+
+    ``numpy.sinc(q)`` is ``sin(pi*q)/(pi*q)``, so ``coherence_width`` is the
+    distance from the packet centre to the first zero of the envelope.
+    """
+    envelope = np.sinc((x - center) / coherence_width)
+    return c0 + c1 * x + amplitude * envelope * np.sin(2 * np.pi * (x - center) / period + phase)
 
 
-def fit_null_envelope(opd: np.ndarray, metric: np.ndarray, max_candidates: int = 10) -> dict[str, object]:
-    """Fit a coherence-envelope sinusoid and return measured-validated trough candidates."""
-    x = np.asarray(opd, dtype=float)
-    y = np.asarray(metric, dtype=float)
+def fit_null_envelope(
+    opd: np.ndarray,
+    metric: np.ndarray,
+    max_candidates: int = 10,
+    *,
+    period_bounds_um: tuple[float, float] = (1.2, 2.0),
+    min_r2: float = 0.35,
+) -> dict[str, object]:
+    """Fit a sinc-envelope sinusoid and return measured-validated troughs.
+
+    A successful numerical optimiser is not by itself a valid fringe packet.
+    ``fit_ok`` therefore also requires the configured minimum R-squared.  The
+    caller must not apply a piston solution when either baseline fails it.
+    """
+    raw_x = np.asarray(opd, dtype=float).ravel()
+    raw_y = np.asarray(metric, dtype=float).ravel()
+    if raw_x.shape != raw_y.shape:
+        raise ValueError("OPD and null metric arrays must have identical shapes")
+    finite = np.isfinite(raw_x) & np.isfinite(raw_y)
+    x, y = raw_x[finite], raw_y[finite]
+    if len(x) < 7:
+        raise ValueError("At least seven finite null samples are required")
     order = np.argsort(x)
     x, y = x[order], y[order]
+    if np.any(np.diff(x) <= 0):
+        raise ValueError("Null OPD coordinates must be unique")
+
     span = float(np.ptp(x))
-    smooth = gaussian_filter1d(y, sigma=max(0.8, len(y) / 250))
-    c0 = float(np.median(y))
-    amp0 = max(float(np.ptp(y)) / 2, 1e-6)
-    center0 = float(x[np.argmin(smooth)])
     dx = float(np.median(np.diff(x)))
-    # FFT supplies a useful period seed while excluding the DC component.
-    centered = smooth - np.mean(smooth)
-    freqs = np.fft.rfftfreq(len(x), d=max(dx, 1e-9))
-    spectrum = np.abs(np.fft.rfft(centered))
-    valid = (freqs > 1 / max(span, dx)) & (freqs < 1 / max(4 * dx, 1e-9))
-    period0 = float(1 / freqs[np.argmax(np.where(valid, spectrum, 0.0))]) if np.any(valid) else span / 6
-    p0 = [c0, 0.0, amp0, center0, max(span / 3, dx * 4), np.clip(period0, 4 * dx, span), 0.0]
-    lower = [float(np.min(y) - np.ptp(y)), -np.inf, -2 * max(np.ptp(y), 1e-6), x[0], 2 * dx, 3 * dx, -2 * np.pi]
-    upper = [float(np.max(y) + np.ptp(y)), np.inf, 2 * max(np.ptp(y), 1e-6), x[-1], span * 2, span, 2 * np.pi]
-    fit_ok = True
-    warning = ""
-    try:
-        popt, _ = curve_fit(_null_model, x, y, p0=p0, bounds=(lower, upper), maxfev=60000)
-        dense_x = np.linspace(x[0], x[-1], max(4000, len(x) * 20))
-        dense_y = _null_model(dense_x, *popt)
-    except Exception as error:
-        fit_ok = False
-        warning = str(error)
+    if not np.isfinite(span) or span <= 0 or not np.isfinite(dx) or dx <= 0:
+        raise ValueError("Null OPD scan must have a positive span and spacing")
+    period_low, period_high = map(float, period_bounds_um)
+    period_low = max(period_low, 3.0 * dx)
+    period_high = min(period_high, span)
+    if not 0 < period_low < period_high:
+        raise ValueError("period_bounds_um must overlap the sampled OPD range")
+    if not 0.0 <= float(min_r2) <= 1.0:
+        raise ValueError("min_r2 must lie in [0, 1]")
+
+    smooth = gaussian_filter1d(y, sigma=max(0.8, len(y) / 250))
+    slope0, intercept0 = np.polyfit(x, smooth, 1)
+    detrended = smooth - (intercept0 + slope0 * x)
+    analytic_amplitude = gaussian_filter1d(np.abs(hilbert(detrended)), sigma=max(1.0, len(y) / 100))
+    center0 = float(x[int(np.argmax(analytic_amplitude))])
+    amplitude0 = max(float(np.ptp(detrended)) / 2.0, 1e-9)
+
+    # Restrict the FFT seed to the physical wavelength interval.  Without this
+    # restriction a slow drift, such as the failed 11-31 trace seen on sky, can
+    # be mistaken for a very long fringe period.
+    freqs = np.fft.rfftfreq(len(x), d=dx)
+    spectrum = np.abs(np.fft.rfft(detrended))
+    valid_frequency = (freqs >= 1.0 / period_high) & (freqs <= 1.0 / period_low)
+    if np.any(valid_frequency):
+        selected = int(np.argmax(np.where(valid_frequency, spectrum, -np.inf)))
+        period0 = float(1.0 / freqs[selected])
+    else:
+        period0 = 0.5 * (period_low + period_high)
+
+    y_span = max(float(np.ptp(y)), 1e-9)
+    width_low = max(period_low, 3.0 * dx)
+    width_high = max(4.0 * span, width_low * 1.1)
+    lower = [
+        float(np.min(y) - y_span),
+        -10.0 * y_span / span,
+        0.0,
+        float(x[0]),
+        width_low,
+        period_low,
+        -2.0 * np.pi,
+    ]
+    upper = [
+        float(np.max(y) + y_span),
+        10.0 * y_span / span,
+        5.0 * y_span,
+        float(x[-1]),
+        width_high,
+        period_high,
+        2.0 * np.pi,
+    ]
+
+    # A few starts avoid locking the packet centre to one arbitrary fringe
+    # minimum.  The Hilbert-envelope maximum is the preferred centre seed.
+    center_seeds = [center0, float(x[np.argmin(smooth)]), float(np.median(x))]
+    width_seeds = [max(span / 2.0, width_low), max(span, width_low)]
+    phase_seeds = [-np.pi / 2.0, 0.0, np.pi / 2.0]
+    best_fit: tuple[float, np.ndarray] | None = None
+    errors: list[str] = []
+    for center_seed in center_seeds:
+        for width_seed in width_seeds:
+            for phase_seed in phase_seeds:
+                p0 = [
+                    float(intercept0),
+                    float(slope0),
+                    amplitude0,
+                    float(np.clip(center_seed, x[0], x[-1])),
+                    float(np.clip(width_seed, width_low, width_high)),
+                    float(np.clip(period0, period_low, period_high)),
+                    float(phase_seed),
+                ]
+                try:
+                    popt, _ = curve_fit(
+                        _null_sinc_model,
+                        x,
+                        y,
+                        p0=p0,
+                        bounds=(lower, upper),
+                        maxfev=30000,
+                    )
+                    residual_sum = float(np.sum((y - _null_sinc_model(x, *popt)) ** 2))
+                    if best_fit is None or residual_sum < best_fit[0]:
+                        best_fit = (residual_sum, popt)
+                except Exception as error:
+                    errors.append(str(error))
+
+    dense_x = np.linspace(x[0], x[-1], max(4000, len(x) * 20))
+    optimiser_ok = best_fit is not None
+    if optimiser_ok:
+        ss_res, popt = best_fit
+        fitted_samples = _null_sinc_model(x, *popt)
+        dense_y = _null_sinc_model(dense_x, *popt)
+        ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+        total_r2 = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+        linear_slope, linear_intercept = np.polyfit(x, y, 1)
+        ss_linear = float(np.sum((y - (linear_intercept + linear_slope * x)) ** 2))
+        # Judge whether the coherent packet explains structure beyond an
+        # arbitrary straight drift.  A drifting, non-fringing trace can have a
+        # deceptively high ordinary R-squared otherwise.
+        r2 = float(1.0 - ss_res / ss_linear) if ss_linear > 0 else 0.0
+        residual = y - fitted_samples
+        rmse = float(np.sqrt(np.mean(residual**2)))
+        model_baseline = popt[0] + popt[1] * x
+        modulation_peak_to_peak = float(np.ptp(fitted_samples - model_baseline))
+        period = float(popt[5])
+        envelope_dense = np.abs(np.sinc((dense_x - popt[3]) / popt[4]))
+    else:
         popt = None
-        dense_x = np.linspace(x[0], x[-1], max(4000, len(x) * 20))
+        r2 = float("-inf")
+        total_r2 = float("-inf")
+        rmse = float(np.sqrt(np.mean((y - smooth) ** 2)))
+        modulation_peak_to_peak = 0.0
+        period = period0
+        envelope_dense = np.ones_like(dense_x)
         dense_y = np.interp(dense_x, x, smooth)
-    trough_idx, _ = find_peaks(-dense_y, distance=max(2, int(len(dense_x) * 3 * dx / max(span, dx))))
+
+    fit_ok = bool(optimiser_ok and np.isfinite(r2) and r2 >= float(min_r2))
+    if not optimiser_ok:
+        warning = "Sinc × sine optimiser failed" + (f": {errors[-1]}" if errors else "")
+    elif not fit_ok:
+        warning = f"Poor sinc × sine fit: R²={r2:.3f} is below {float(min_r2):.3f}"
+    else:
+        warning = ""
+
+    minimum_distance = max(2, int(0.55 * period / span * len(dense_x)))
+    trough_idx, _ = find_peaks(-dense_y, distance=minimum_distance)
+    # Do not use sidelobes in which the fitted coherence amplitude has almost
+    # vanished.  This still retains multiple periodic troughs near the packet.
+    trough_idx = np.asarray([index for index in trough_idx if envelope_dense[index] >= 0.10], dtype=int)
     if len(trough_idx) == 0:
         trough_idx = np.asarray([int(np.argmin(dense_y))])
     candidates = []
@@ -194,25 +322,40 @@ def fit_null_envelope(opd: np.ndarray, metric: np.ndarray, max_candidates: int =
             vertex = -q[1] / (2 * q[0]) if q[0] > 0 else candidate_x
             if local_x.min() <= vertex <= local_x.max():
                 refined_x = float(vertex)
-        measured_metric = float(np.min(local_y))
         candidates.append(
             {
                 "opd_um": refined_x,
                 "delta_piston_um": refined_x / 2.0,
-                "metric": measured_metric,
+                "metric": float(np.min(local_y)),
                 "fit_metric": float(dense_y[index]),
+                "envelope_fraction": float(envelope_dense[index]),
             }
         )
     candidates.sort(key=lambda item: item["metric"])
-    best = candidates[0]
     return {
+        "model": "sinc × sine",
         "fit_ok": fit_ok,
         "fit_warning": warning,
-        "parameters": None if popt is None else [float(v) for v in popt],
+        "r2": r2,
+        "total_r2": total_r2,
+        "rmse": rmse,
+        "normalized_rmse": float(rmse / y_span),
+        "modulation_peak_to_peak": modulation_peak_to_peak,
+        "finite_sample_fraction": float(np.count_nonzero(finite) / len(raw_x)),
+        "parameter_names": [
+            "offset",
+            "slope",
+            "amplitude",
+            "packet_center_um",
+            "coherence_first_zero_um",
+            "period_um",
+            "phase_rad",
+        ],
+        "parameters": None if popt is None else [float(value) for value in popt],
         "fit_opd": dense_x,
         "fit_metric": dense_y,
         "candidates": candidates[:max_candidates],
-        "best": best,
+        "best": candidates[0],
     }
 
 

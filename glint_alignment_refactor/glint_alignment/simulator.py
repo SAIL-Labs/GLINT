@@ -5,7 +5,7 @@ from threading import RLock
 
 import numpy as np
 
-from .boxes import BASELINE_TO_NULL, FRINGE_TRACKING_BOXES, NULL_BOXES, PHOT_BOXES
+from .boxes import BASELINE_TO_NULL, FRINGE_TRACKING_BOXES, NULL_BOXES, PHOT_BOXES, differential_null_boxes
 from .command_log import CommandLogger
 from .config import segment_state
 from .hardware import AlignmentHardware
@@ -60,6 +60,8 @@ class SimulatedHardware(AlignmentHardware):
             31: (-0.09, 0.24),
         }
         self.null_deltas = {(11, 20): 0.32, (11, 31): -0.46}
+        self.active_null_scan_baseline: tuple[int, int] | None = None
+        self.active_null_scan_box: list[int] | None = None
         self.noise = float(config.get("simulation", {}).get("noise", 1.0))
 
     def set_dark_mode(self, enabled: bool) -> None:
@@ -163,6 +165,15 @@ class SimulatedHardware(AlignmentHardware):
         with self.camera_lock:
             return self._apapane_frames_unlocked(nframes)
 
+    def set_null_scan_baseline(self, baseline: tuple[int, int] | None) -> None:
+        """Select the telescope-validated raw-flux box for a simulated scan."""
+        self.active_null_scan_baseline = None if baseline is None else tuple(map(int, baseline))
+        self.active_null_scan_box = (
+            None
+            if self.active_null_scan_baseline is None
+            else differential_null_boxes()[self.active_null_scan_baseline]
+        )
+
     def _apapane_frames_unlocked(self, nframes: int) -> np.ndarray:
         yy, xx = np.indices((280, 280))
         dark = 95.0 + 0.012 * xx + 0.008 * yy
@@ -170,18 +181,36 @@ class SimulatedHardware(AlignmentHardware):
         if not self.dark_mode:
             for segment, name in zip((11, 20, 31), PHOT_BOXES):
                 self._put_box(frame, PHOT_BOXES[name], self._phot_flux(segment))
-            for baseline, name in BASELINE_TO_NULL.items():
+            if self.active_null_scan_baseline is not None:
+                baseline = self.active_null_scan_baseline
                 a, b = baseline
                 delta = self.dm[a].piston_um - self.dm[b].piston_um
                 opd = 2 * delta
                 target = 2 * self.null_deltas[baseline]
-                period = 0.72 if baseline == (11, 20) else 0.83
-                envelope = np.exp(-0.5 * ((opd - target) / 2.0) ** 2)
-                metric = 0.16 - 0.115 * envelope * np.cos(2 * np.pi * (opd - target) / period)
-                ft_total_each = 8000.0
-                self._put_box(frame, FRINGE_TRACKING_BOXES[name]["FT1"], ft_total_each)
-                self._put_box(frame, FRINGE_TRACKING_BOXES[name]["FT2"], ft_total_each)
-                self._put_box(frame, NULL_BOXES[name], metric * 2 * ft_total_each)
+                period = 1.55 if baseline == (11, 20) else 1.65
+                coherence_width = 5.6 if baseline == (11, 20) else 6.2
+                envelope = 0.65 + 0.35 * np.sinc((opd - target) / coherence_width)
+                flux = 60000.0 - 50000.0 * envelope * np.cos(2 * np.pi * (opd - target) / period)
+                assert self.active_null_scan_box is not None
+                self._put_box(frame, self.active_null_scan_box, flux)
+            else:
+                # Keep the established dashboard/null-live simulation when a
+                # differential scan is not in progress.
+                for baseline, name in BASELINE_TO_NULL.items():
+                    a, b = baseline
+                    delta = self.dm[a].piston_um - self.dm[b].piston_um
+                    opd = 2 * delta
+                    target = 2 * self.null_deltas[baseline]
+                    period = 1.55 if baseline == (11, 20) else 1.65
+                    coherence_width = 5.6 if baseline == (11, 20) else 6.2
+                    envelope = np.sinc((opd - target) / coherence_width)
+                    metric = 0.16 + 0.115 * envelope * np.sin(
+                        2 * np.pi * (opd - target) / period - np.pi / 2
+                    )
+                    ft_total_each = 8000.0
+                    self._put_box(frame, FRINGE_TRACKING_BOXES[name]["FT1"], ft_total_each)
+                    self._put_box(frame, FRINGE_TRACKING_BOXES[name]["FT2"], ft_total_each)
+                    self._put_box(frame, NULL_BOXES[name], metric * 2 * ft_total_each)
             frame += self.rng.normal(0, self.noise, frame.shape)
         else:
             frame += self.rng.normal(0, self.noise, frame.shape)
@@ -191,7 +220,7 @@ class SimulatedHardware(AlignmentHardware):
         with self.lock:
             return dict(self.mount)
 
-    def move_mount(self, targets: dict[str, float], timeout_s: float) -> None:
+    def move_mount(self, targets: dict[str, float], timeout_s: float) -> dict[str, float]:
         del timeout_s
         try:
             with self.lock:
@@ -199,23 +228,35 @@ class SimulatedHardware(AlignmentHardware):
                     low, high = self.limits[axis]
                     if not low <= float(value) <= high:
                         raise ValueError(f"Simulated {axis} limit violation")
-                    self.mount[axis] = float(value)
-                readback = {axis: self.mount[axis] for axis in targets}
-            self.command_logger.record(
-                "mount",
-                "move_absolute",
-                command=[
-                    {
-                        "method": "set_pos",
-                        "axis_name": axis,
-                        "axis_number": {"pitch": 1, "roll": 2, "yaw": 3, "x": 4, "z": 5, "y": 6}[axis],
-                        "position": float(value),
-                    }
+                changed = {
+                    axis: float(value)
                     for axis, value in targets.items()
-                ],
-                targets=targets,
-                readback=readback,
-            )
+                    if not np.isclose(self.mount[axis], float(value), atol=1e-12)
+                }
+                for axis, value in changed.items():
+                    self.mount[axis] = value
+                readback = {axis: float(self.mount[axis]) for axis in targets}
+            if changed:
+                self.command_logger.record(
+                    "mount",
+                    "move_absolute",
+                    command=[
+                        {
+                            "method": "set_pos",
+                            "axis_name": axis,
+                            "axis_number": {"pitch": 1, "roll": 2, "yaw": 3, "x": 4, "z": 5, "y": 6}[axis],
+                            "position": float(value),
+                        }
+                        for axis, value in changed.items()
+                    ],
+                    targets=changed,
+                    readback=readback,
+                    details={
+                        "requested_targets": targets,
+                        "unchanged_axes_skipped": sorted(set(targets) - set(changed)),
+                    },
+                )
+            return readback
         except BaseException as error:
             self.command_logger.record(
                 "mount",
@@ -303,3 +344,6 @@ class SimulatedHardware(AlignmentHardware):
             "stop",
             command={"interface": "simulated_Mount.rstop"},
         )
+
+    def close(self) -> None:
+        self.command_logger.close()

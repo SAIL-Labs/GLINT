@@ -30,6 +30,9 @@ class InstrumentHardware(AlignmentHardware):
         self.config = config
         self.command_logger = CommandLogger(config, self.mode)
         self._camera_lock = RLock()
+        self._mount_lock = RLock()
+        self._mount_cache: dict[str, int] = {}
+        self._conex_cache: dict[str, float] = {}
         SHM = importlib.import_module("pyMilk.interfacing.shm").SHM
         # Attach to the already-running DM service.  Publishing to these SHM
         # streams does not initialize or directly open the physical DM.
@@ -55,6 +58,7 @@ class InstrumentHardware(AlignmentHardware):
             read_timeout_s=mount_cfg.get("read_timeout_s", 1.0),
             write_timeout_s=mount_cfg.get("write_timeout_s", 1.0),
         )
+        self._mount_poll_interval_s = float(mount_cfg.get("poll_interval_s", 0.02))
         self._limits = self._query_limits()
 
     def focal_frames(self, nframes: int) -> np.ndarray:
@@ -88,52 +92,103 @@ class InstrumentHardware(AlignmentHardware):
         )
 
     def get_mount(self) -> dict[str, float]:
-        return {name: float(self.mount_device.get_pos(number)) for name, number in AXIS_NUMBER.items()}
+        # One lock covers the complete six-axis read. This prevents the GUI from
+        # interleaving status queries with an in-progress multi-axis move.
+        with self._mount_lock:
+            positions = {name: int(self.mount_device.get_pos(number)) for name, number in AXIS_NUMBER.items()}
+            self._mount_cache.update(positions)
+            return {name: float(value) for name, value in positions.items()}
 
-    def move_mount(self, targets: dict[str, float], timeout_s: float) -> None:
+    def move_mount(self, targets: dict[str, float], timeout_s: float) -> dict[str, float]:
+        """Move only axes whose target differs from the last verified position.
+
+        The former implementation re-commanded roll and both map axes at every
+        raster point, polled every requested axis, then performed another full
+        six-axis read in the engine.  The cache is populated only by controller
+        readback or a successfully verified move; it is never updated merely
+        because a command was sent.
+        """
         integer_targets = {name: int(round(value)) for name, value in targets.items()}
-        command = [
-            {
-                "method": "set_pos",
-                "axis_name": name,
-                "axis_number": AXIS_NUMBER[name],
-                "position": value,
-                "wire": f"AXI{AXIS_NUMBER[name]}:GOABS {value}",
-            }
-            for name, value in integer_targets.items()
-        ]
-        try:
-            for name, value in integer_targets.items():
-                self.mount_device.set_pos(AXIS_NUMBER[name], value)
-            deadline = time.monotonic() + timeout_s
-            while True:
-                moving = any(self.mount_device.in_motion(AXIS_NUMBER[name]) for name in integer_targets)
-                positions = {name: self.mount_device.get_pos(AXIS_NUMBER[name]) for name in integer_targets}
-                if not moving and all(positions[name] == value for name, value in integer_targets.items()):
-                    self.command_logger.record(
-                        "mount",
-                        "move_absolute",
-                        command=command,
-                        targets=integer_targets,
-                        readback=positions,
-                    )
-                    return
-                if time.monotonic() >= deadline:
-                    self.mount_device.rstop()
-                    raise TimeoutError(
-                        f"Mount did not reach {integer_targets} within {timeout_s:.1f} s; readback={positions}"
-                    )
-                time.sleep(0.02)
-        except BaseException as error:
-            self.command_logger.record(
-                "mount",
-                "move_absolute",
-                command=command,
-                targets=integer_targets,
-                outcome="failed",
-                error=str(error),
-            )
-            raise
+        with self._mount_lock:
+            try:
+                # Unknown axes are read once. Subsequent scan points use only
+                # readbacks already verified by this process.
+                unknown = [name for name in integer_targets if name not in self._mount_cache]
+                for name in unknown:
+                    self._mount_cache[name] = int(self.mount_device.get_pos(AXIS_NUMBER[name]))
+                changed = {
+                    name: value
+                    for name, value in integer_targets.items()
+                    if self._mount_cache.get(name) != value
+                }
+                if not changed:
+                    return {name: float(self._mount_cache[name]) for name in integer_targets}
+
+                command = [
+                    {
+                        "method": "set_pos",
+                        "axis_name": name,
+                        "axis_number": AXIS_NUMBER[name],
+                        "position": value,
+                        "wire": f"AXI{AXIS_NUMBER[name]}:GOABS {value}",
+                    }
+                    for name, value in changed.items()
+                ]
+                for name, value in changed.items():
+                    self.mount_device.set_pos(AXIS_NUMBER[name], value)
+
+                deadline = time.monotonic() + timeout_s
+                positions: dict[str, int] = {}
+                while True:
+                    moving = {
+                        name: bool(self.mount_device.in_motion(AXIS_NUMBER[name]))
+                        for name in changed
+                    }
+                    # Position queries are useful only after all commanded axes
+                    # have stopped. Avoiding them while moving substantially cuts
+                    # serial open/write/read/close transactions on the DS102.
+                    if not any(moving.values()):
+                        positions = {
+                            name: int(self.mount_device.get_pos(AXIS_NUMBER[name]))
+                            for name in changed
+                        }
+                        if all(positions[name] == value for name, value in changed.items()):
+                            self._mount_cache.update(positions)
+                            requested_readback = {
+                                name: float(self._mount_cache[name]) for name in integer_targets
+                            }
+                            self.command_logger.record(
+                                "mount",
+                                "move_absolute",
+                                command=command,
+                                targets=changed,
+                                readback=requested_readback,
+                                details={
+                                    "requested_targets": integer_targets,
+                                    "unchanged_axes_skipped": sorted(set(integer_targets) - set(changed)),
+                                },
+                            )
+                            return requested_readback
+                    if time.monotonic() >= deadline:
+                        self.mount_device.rstop()
+                        for name in changed:
+                            self._mount_cache.pop(name, None)
+                        raise TimeoutError(
+                            f"Mount did not reach {changed} within {timeout_s:.1f} s; readback={positions}"
+                        )
+                    time.sleep(self._mount_poll_interval_s)
+            except BaseException as error:
+                for name in integer_targets:
+                    self._mount_cache.pop(name, None)
+                self.command_logger.record(
+                    "mount",
+                    "move_absolute",
+                    command={"interface": "SurugaMount.set_pos", "requested_targets": integer_targets},
+                    targets=integer_targets,
+                    outcome="failed",
+                    error=str(error),
+                )
+                raise
 
     def _query_limits(self) -> dict[str, tuple[float, float]]:
         configured = self.config.get("mount_control", {}).get("limits", {})
@@ -347,16 +402,24 @@ class InstrumentHardware(AlignmentHardware):
                 result[axis] = float(output.split()[-1])
             except (IndexError, ValueError) as error:
                 raise RuntimeError(f"Could not parse Conex {axis} status: {output!r}") from error
+        self._conex_cache.update(result)
         return result
 
     def move_conex(self, targets: dict[str, float]) -> None:
         for axis in ("u", "v"):
-            if axis in targets:
-                self._conex_command(axis, "goto", float(targets[axis]))
+            if axis in targets and not (
+                axis in self._conex_cache
+                and np.isclose(self._conex_cache[axis], float(targets[axis]), atol=1e-12)
+            ):
+                target = float(targets[axis])
+                self._conex_command(axis, "goto", target)
+                self._conex_cache[axis] = target
 
     def stop(self) -> None:
         try:
-            self.mount_device.rstop()
+            with self._mount_lock:
+                self.mount_device.rstop()
+                self._mount_cache.clear()
             self.command_logger.record(
                 "mount",
                 "stop",
@@ -376,3 +439,4 @@ class InstrumentHardware(AlignmentHardware):
             self.mount_device.close()
         except Exception:
             pass
+        self.command_logger.close()

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.8
+
+- Replaced the Gaussian null-packet model with a bounded sinc coherence envelope multiplied by a sinusoid. The default physical OPD fringe-period interval is 1.2–2.0 µm and remains editable in the active configuration.
+- Added multi-start fitting seeded from the Hilbert envelope and a physical-period FFT search. Fit quality is measured against a linear-drift-only model, preventing a slow trend from masquerading as a coherent fringe packet.
+- Added a mandatory null safeguard: both 11–20 and 11–31 must pass the configured R² threshold and FT-denominator validity check before a common piston solution can be applied.
+- Saved per-sample null, FT1, FT2 and FT1+FT2 flux diagnostics plus every individual repetition in the result data. The review graph now shows repetitions, the mean, sinc × sine fit, R², FT scale and an explicit rejected state.
+- Restored null settling to 0.1 s after the first telescope trace showed that the v0.4.7 0.01 s optimization was not demonstrably repeatable on both baselines.
+- Verified and regression-tested the scan sequence: segment A minimum→maximum with B at maximum, followed by B maximum-minus-one-step→minimum with A at maximum. OPD remains `2 × (piston A − piston B)`.
+
+## 0.4.7
+
+- Audited all eight workflow steps against the retained legacy scan scripts and documented sample counts, settling delays, and controller-transaction differences in `docs/RUNTIME_AUDIT.md`.
+- Reduced a normal pitch/yaw or X/Y raster step from at least 15 Suruga transactions to 3 by skipping verified unchanged axes, polling only axes actually commanded, avoiding position queries while motion is active, returning verified readback directly to the engine, and suppressing competing GUI mount polls during scans.
+- Added an atomic mount-communication lock and retained the exact legacy DS102 strings plus one-open/close-per-command behavior for compatibility.
+- Changed pitch/yaw, X/Y, and tip/tilt maps to serpentine traversal, avoiding large end-of-row return moves without changing saved array orientation or fitting coordinates.
+- Added explicit per-scan `settle_s` settings. Bulk, pitch/yaw, X/Y, and tip/tilt remain at 0.1 s; null now defaults to a conservative 0.01 s instead of inheriting 0.1 s, reducing its fixed settling budget from 105 s to 10.5 s for the default 1,050 samples.
+- Kept persistent command-log streams open for the application lifetime while flushing every record immediately, removing per-DM-sample file-open overhead without weakening the audit trail.
+- Added runtime and sample-count metadata to scan JSON plus regression tests for optimized Suruga command counts, raster readback behavior, and absence of background controller polling; all 51 tests pass.
+
 ## 0.4.6
 
 - Removed all runtime imports of `shmDMcontrol.py`, `memsControl.py`, `apiDMcontrol.py`, and `chipMountControl.py`; `legacy_active/control-code/` is now traceability-only.

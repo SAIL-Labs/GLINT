@@ -1,6 +1,6 @@
 # GLINT Alignment Refactor: Structure, Dependencies and File Storage
 
-Version 0.4.6
+Version 0.4.8
 
 ## 1. Quick reference
 
@@ -135,6 +135,8 @@ The refactor does not initialize the DM or Point Grey cameras. It attaches to se
 Click **MOUNT CONFIGURATION** to open the six-axis controller. It shows live positions, configured limits and unit-specific jog steps. The logical/controller mapping is fixed:
 
 Roll is displayed but locked to `mount_control.fixed_roll` (1400 by default). Every scan and jog uses the same safeguard path and includes the fixed roll. The configured JSON limits are authoritative; controller queries provide diagnostic warnings.
+
+The instrument backend keeps a cache populated only by verified controller readback. A command already at its verified target is not sent again; moving axes are polled until stopped and read back once before acquisition. Pitch/yaw and X/Y use serpentine rasters. The GUI does not issue competing six-axis status requests while scans run. Serial command strings and the legacy open/write/read/close transaction lifetime are unchanged.
 
 | Logical axis | Controller axis | Configured range |
 | --- | ---: | ---: |

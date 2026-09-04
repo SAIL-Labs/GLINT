@@ -237,6 +237,16 @@ class TestCore(unittest.TestCase):
         self.assertAlmostEqual(first_null_state[11].piston_um, -1.3)
         self.assertAlmostEqual(first_null_state[20].piston_um, 1.3)
         self.assertEqual(first_null_state[31], away[31])
+        # Each 5-point ascending leg is followed by the other segment's
+        # 4-point descending leg; the zero-OPD endpoint is not duplicated.
+        self.assertEqual(len(commanded), 19)  # 18 scan points plus guarded pre-scan restore
+        self.assertAlmostEqual(commanded[4][11].piston_um, 1.3)
+        self.assertAlmostEqual(commanded[4][20].piston_um, 1.3)
+        self.assertAlmostEqual(commanded[5][11].piston_um, 1.3)
+        self.assertAlmostEqual(commanded[5][20].piston_um, 0.65)
+        self.assertAlmostEqual(commanded[8][20].piston_um, -1.3)
+        self.assertAlmostEqual(commanded[9][11].piston_um, -1.3)
+        self.assertAlmostEqual(commanded[9][31].piston_um, 1.3)
 
     def test_apply_commands_and_retains_the_complete_stage_dm_state(self):
         zero = segment_state(self.config, "zero_ptt")
@@ -335,6 +345,7 @@ class TestCore(unittest.TestCase):
         gui.config = self.config
         gui.running = True
         gui.scan_running = True
+        gui.current_kind = "tip_tilt"
         gui._last_live_dm_refresh = 0.0
         gui.refresh_dm = Mock()
         gui.refresh_mount = Mock()
@@ -344,8 +355,26 @@ class TestCore(unittest.TestCase):
         gui._drain_events()
 
         gui.refresh_dm.assert_called_once()
-        gui.refresh_mount.assert_called_once()
+        gui.refresh_mount.assert_not_called()
         gui.root.after.assert_called_once()
+
+    def test_mount_scan_does_not_issue_background_suruga_status_reads(self):
+        gui = AlignmentGUI.__new__(AlignmentGUI)
+        gui.events = queue.Queue()
+        gui.config = self.config
+        gui.running = True
+        gui.scan_running = True
+        gui.current_kind = "pitch_yaw"
+        gui._last_live_dm_refresh = 0.0
+        gui.refresh_dm = Mock()
+        gui.refresh_mount = Mock()
+        gui._append_log = Mock()
+        gui.root = Mock()
+
+        gui._drain_events()
+
+        gui.refresh_dm.assert_called_once()
+        gui.refresh_mount.assert_not_called()
 
     def test_rest_of_dm_map_is_applied_physically_and_used_by_xy(self):
         current = segment_state(self.config, "zero_ptt")
@@ -693,6 +722,82 @@ class TestCore(unittest.TestCase):
         mount.close()
         self.assertFalse(mount.serial.is_open)
 
+    def test_mount_move_skips_unchanged_axes_and_avoids_position_queries_while_moving(self):
+        class CountingMount:
+            def __init__(self):
+                self.positions = {1: 0, 2: 1400, 3: 0}
+                self.calls = []
+
+            def set_pos(self, axis, position):
+                self.calls.append(("set", axis, position))
+                self.positions[axis] = position
+
+            def in_motion(self, axis):
+                self.calls.append(("motion", axis))
+                return False
+
+            def get_pos(self, axis):
+                self.calls.append(("position", axis))
+                return self.positions[axis]
+
+            def rstop(self):
+                self.calls.append(("stop",))
+
+        hardware = InstrumentHardware.__new__(InstrumentHardware)
+        hardware.mount_device = CountingMount()
+        hardware._mount_lock = instrument_module.RLock()
+        hardware._mount_cache = {"pitch": 0, "roll": 1400, "yaw": 0}
+        hardware._mount_poll_interval_s = 0.0
+        hardware.command_logger = Mock()
+
+        readback = hardware.move_mount({"pitch": 50, "yaw": 25, "roll": 1400}, timeout_s=1.0)
+
+        self.assertEqual(readback, {"pitch": 50.0, "yaw": 25.0, "roll": 1400.0})
+        self.assertEqual(
+            hardware.mount_device.calls,
+            [
+                ("set", 1, 50),
+                ("set", 3, 25),
+                ("motion", 1),
+                ("motion", 3),
+                ("position", 1),
+                ("position", 3),
+            ],
+        )
+        hardware.mount_device.calls.clear()
+        hardware.move_mount({"pitch": 50, "yaw": 25, "roll": 1400}, timeout_s=1.0)
+        self.assertEqual(hardware.mount_device.calls, [])
+        hardware.command_logger.record.assert_called_once()
+
+    def test_mount_raster_does_not_read_all_six_axes_at_every_sample(self):
+        config = load_config(simulation=True)
+        config["command_logging"]["enabled"] = False
+        config["time_scale"] = 0.0
+
+        class CountingHardware(SimulatedHardware):
+            def __init__(self, settings):
+                super().__init__(settings)
+                self.mount_reads = 0
+
+            def get_mount(self):
+                self.mount_reads += 1
+                return super().get_mount()
+
+        hardware = CountingHardware(config)
+        engine = AlignmentEngine(hardware, config)
+        engine.apapane_dark = np.zeros((280, 280), dtype=float)
+        result = engine.pitch_yaw_scan(
+            {
+                **config["scans"]["pitch_yaw"],
+                "pitch": {"start": 300, "span": 100, "step": 50},
+                "yaw": {"start": -100, "span": 100, "step": 50},
+            }
+        )
+
+        self.assertEqual(result.metadata["sample_count"], 9)
+        self.assertEqual(result.metadata["raster_path"], "serpentine")
+        self.assertLessEqual(hardware.mount_reads, 2)
+
     def test_three_persistent_device_command_logs_without_per_scan_copies(self):
         with tempfile.TemporaryDirectory() as temp:
             config = load_config(simulation=True)
@@ -738,11 +843,19 @@ class TestCore(unittest.TestCase):
             hardware_again.move_mount({"x": 3040.0}, timeout_s=1.0)
             newest = json.loads((session / "mount_commands.jsonl").read_text(encoding="utf-8").splitlines()[-1])
             self.assertGreater(newest["sequence"], last_sequence)
+            hardware.close()
+            hardware_again.close()
 
     def test_null_fit_and_common_pistons(self):
         x = np.linspace(-5.2, 5.2, 209)
-        y = 0.16 - 0.115 * np.exp(-0.5 * ((x - 0.64) / 2.0) ** 2) * np.cos(2 * np.pi * (x - 0.64) / 0.72)
+        y = 0.16 + 0.115 * np.sinc((x - 0.64) / 5.6) * np.sin(
+            2 * np.pi * (x - 0.64) / 1.55 - np.pi / 2
+        )
         fit = fit_null_envelope(x, y)
+        self.assertEqual(fit["model"], "sinc × sine")
+        self.assertTrue(fit["fit_ok"])
+        self.assertGreater(fit["r2"], 0.99)
+        self.assertAlmostEqual(fit["parameters"][5], 1.55, delta=0.02)
         self.assertAlmostEqual(fit["best"]["delta_piston_um"], 0.32, delta=0.04)
         solution = solve_common_pistons(
             [{"delta_piston_um": 0.32, "metric": 0.04}],
@@ -754,6 +867,50 @@ class TestCore(unittest.TestCase):
         self.assertAlmostEqual(solution["pistons_um"]["11"] - solution["pistons_um"]["31"], -0.46)
         for piston in solution["pistons_um"].values():
             self.assertTrue(-1.3 <= piston <= 1.3)
+
+    def test_null_fit_rejects_a_drifting_nonfringing_trace(self):
+        x = np.linspace(-5.2, 5.2, 209)
+        rng = np.random.default_rng(3)
+        y = 0.42 + 0.004 * x + rng.normal(0.0, 0.012, len(x))
+        fit = fit_null_envelope(x, y)
+        self.assertFalse(fit["fit_ok"])
+        self.assertLess(fit["r2"], 0.35)
+        self.assertIn("Poor sinc", fit["fit_warning"])
+
+    def test_null_scan_refuses_solution_when_either_baseline_fit_fails(self):
+        self.engine.acquire_dark("apapane", 1)
+        good = {
+            "model": "sinc × sine",
+            "fit_ok": True,
+            "fit_warning": "",
+            "r2": 0.9,
+            "fit_opd": np.asarray([-0.4, 0.0, 0.4]),
+            "fit_metric": np.asarray([0.2, 0.1, 0.2]),
+            "candidates": [{"opd_um": 0.0, "delta_piston_um": 0.0, "metric": 0.1}],
+            "best": {"opd_um": 0.0, "delta_piston_um": 0.0, "metric": 0.1},
+        }
+        bad = {
+            **good,
+            "fit_ok": False,
+            "fit_warning": "no coherent packet",
+            "r2": 0.02,
+            "candidates": [],
+            "best": None,
+        }
+        parameters = {
+            **self.config["scans"]["null"],
+            "piston": {"start": -0.1, "span": 0.2, "step": 0.1},
+            "nframes": 1,
+            "numavg": 1,
+        }
+        with patch("glint_alignment.engine.fit_null_envelope", side_effect=[good, bad]):
+            result = self.engine.null_scan(parameters)
+        self.assertFalse(result.recommendation["passed"])
+        self.assertFalse(result.recommendation["feasible"])
+        self.assertIn("11-31", result.recommendation["reason"])
+        self.assertIn("flux_diagnostics", result.estimates["11-20"])
+        self.assertIn("11-20__denominator", result.maps)
+        json.dumps(result.json_summary(), allow_nan=False)
 
     def test_individual_dm_apply_and_advanced_mount_jog(self):
         before = self.hardware.get_dm()

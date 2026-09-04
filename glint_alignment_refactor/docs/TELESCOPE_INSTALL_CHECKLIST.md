@@ -1,4 +1,4 @@
-# GLINT Alignment v0.4.6 — Telescope Installation Checklist
+# GLINT Alignment v0.4.8 — Telescope Installation Checklist
 
 Use this checklist before the first telescope alignment. Items marked **motion** or **DM command** change hardware state and should be performed only in an approved engineering window.
 
@@ -70,6 +70,7 @@ The GUI attaches to these streams directly. It does not call `apiDMcontrol`, ope
 - [ ] Confirm `scans.set_z.z` and its `validated` flag for the installed chip/setup.
 - [ ] Confirm `instrument.mount.port` resolves to the DS102 controller.
 - [ ] Confirm baud rate 38400 and the configured read/write timeouts are suitable.
+- [ ] Confirm `instrument.mount.poll_interval_s` (default 0.02 s) detects completion promptly without overloading the controller.
 - [ ] Stop the old GUI or any other process that could own the Suruga serial port; only one process may use it.
 - [ ] Launch the instrument GUI and inspect the startup position/limit readbacks before commanding motion.
 - [ ] **Motion:** Test one small X or Y jog well inside both configured and controller limits, then verify displayed and physical readback.
@@ -91,6 +92,8 @@ The packaged driver sends the same established controller strings, including `AX
 
 - [ ] Verify `config/response_matrix.npy`, the two response perturbations and their sign convention.
 - [ ] Verify pitch/yaw, X/Y, tip/tilt and piston start/range/step values.
+- [ ] Verify each scan's explicit `settle_s`: 0.1 s for bulk, pitch/yaw, X/Y, tip/tilt and null. Reduce null settling only after both baselines are demonstrably repeatable.
+- [ ] Verify `scans.null.period_bounds_um` against the APAPANE wavelength interval and keep the 11–20 and 11–31 fit-quality safeguards enabled.
 - [ ] Confirm pitch/yaw and X/Y endpoints are calculated as `start + range` and remain inside configured mount limits.
 - [ ] Confirm focal dark count 5 and APAPANE dark count 1000 are suitable for the observing setup.
 - [ ] Run a short approved engineering scan and confirm FITS, JSON and PNG outputs have the expected names.

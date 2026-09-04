@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .boxes import FRINGE_TRACKING_BOXES, NULL_BOXES, PHOT_BOXES, integrate_box
+from .boxes import integrate_box, load_detector_boxes
 
 
 DISPLAY_XMIN = 200
@@ -34,15 +34,22 @@ def process_apapane_frame(frames: np.ndarray, dark: np.ndarray | None = None) ->
     return image
 
 
-def collect_null_statistics(image: np.ndarray) -> dict[str, dict[str, float]]:
-    """Use the same summed-box null definition as live_apapane_boxes_MATTEO2."""
+def collect_null_statistics(
+    image: np.ndarray,
+    detector_boxes: dict | None = None,
+) -> dict[str, dict[str, float]]:
+    """Integrate one validated detector-box snapshot from the central JSON."""
+    box_config = detector_boxes or load_detector_boxes()
+    photometry_boxes = box_config["photometry"]
+    null_boxes = box_config["null"]
+    fringe_tracking_boxes = box_config["fringe_tracking"]
     statistics: dict[str, dict[str, float]] = {}
-    for name, box in PHOT_BOXES.items():
+    for name, box in photometry_boxes.items():
         statistics[name] = {"flux": float(integrate_box(image, box))}
-    for name, box in NULL_BOXES.items():
+    for name, box in null_boxes.items():
         null_flux = float(integrate_box(image, box))
-        ft1 = float(integrate_box(image, FRINGE_TRACKING_BOXES[name]["FT1"]))
-        ft2 = float(integrate_box(image, FRINGE_TRACKING_BOXES[name]["FT2"]))
+        ft1 = float(integrate_box(image, fringe_tracking_boxes[name]["FT1"]))
+        ft2 = float(integrate_box(image, fringe_tracking_boxes[name]["FT2"]))
         denominator = ft1 + ft2
         statistics[name] = {
             "null_flux": null_flux,

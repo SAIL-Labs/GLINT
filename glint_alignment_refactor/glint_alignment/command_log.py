@@ -41,6 +41,7 @@ class CommandLogger:
         self._lock = threading.RLock()
         self._sequence = 0
         self._records: list[dict[str, Any]] = []
+        self._streams: dict[str, Any] = {}
         self.session_directory: Path | None = None
         if not self.enabled:
             return
@@ -59,6 +60,13 @@ class CommandLogger:
         for filename in DEVICE_FILES.values():
             (self.session_directory / filename).touch(exist_ok=True)
         self._sequence = self._last_persisted_sequence()
+        # Keep one append stream per device. Every record is still flushed
+        # immediately, but high-point-count DM scans no longer pay an open/close
+        # cycle for every SHM command.
+        self._streams = {
+            device: (self.session_directory / filename).open("a", encoding="utf-8")
+            for device, filename in DEVICE_FILES.items()
+        }
 
     def _last_persisted_sequence(self) -> int:
         last = 0
@@ -125,8 +133,19 @@ class CommandLogger:
             self._records.append(record)
             line = json.dumps(record, separators=(",", ":"), allow_nan=False) + "\n"
             assert self.session_directory is not None
-            with (self.session_directory / DEVICE_FILES[device]).open("a", encoding="utf-8") as stream:
-                stream.write(line)
+            stream = self._streams[device]
+            stream.write(line)
+            stream.flush()
+
+    def close(self) -> None:
+        with self._lock:
+            for stream in self._streams.values():
+                try:
+                    stream.flush()
+                    stream.close()
+                except Exception:
+                    pass
+            self._streams.clear()
 
     def export_since(self, directory: Path, start_sequence: int) -> dict[str, Any] | None:
         """Return the persistent-log range belonging to one scan.

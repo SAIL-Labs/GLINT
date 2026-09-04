@@ -20,7 +20,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tkinter import font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
-from .boxes import FRINGE_TRACKING_BOXES, NULL_BOXES, PHOT_BOXES
+from .boxes import load_detector_boxes
 from .camera_storage import CAMERA_LABELS, save_camera_frame
 from .config import rest_dm_maps, save_config, segment_state, validate_config, validate_scan_defaults
 from .engine import AlignmentEngine, ScanCancelled
@@ -960,6 +960,9 @@ class AlignmentGUI:
                 return
         state_name = self.config.get("workflow", {}).get("start_dm_state", "zero_ptt")
         try:
+            # Refresh first so fixed-roll enforcement cannot rely on a stale
+            # cached position left from a previous workflow.
+            self.hardware.get_mount()
             self.engine.ensure_fixed_roll()
             self.hardware.set_dm(segment_state(self.config, state_name))
             output_directory = begin_alignment(self.config)
@@ -1284,8 +1287,14 @@ class AlignmentGUI:
         if self.running and self.scan_running and now - self._last_live_dm_refresh >= refresh_interval:
             self._last_live_dm_refresh = now
             try:
-                self.refresh_dm()
-                self.refresh_mount()
+                # PTT display reads are useful while a scan changes the DM. Do
+                # not poll all six Suruga axes in the GUI thread during a mount
+                # scan: the engine already verifies every commanded position,
+                # and extra status transactions were a major source of slowdown
+                # and serial-command interleaving. Mount readback refreshes once
+                # the scan/review transition completes.
+                if getattr(self, "current_kind", "") in {"pitch_yaw", "xy", "tip_tilt", "null"}:
+                    self.refresh_dm()
             except Exception as error:
                 self._append_log(f"WARNING: live hardware display refresh failed: {error}")
         self.root.after(75, self._drain_events)
@@ -1561,22 +1570,74 @@ class AlignmentGUI:
             )
             for index, key in enumerate(("11-20", "11-31")):
                 ax = self.figure.add_subplot(grid[0, index])
-                fit = result.estimates[key]
-                ax.plot(fit["opd_um"], fit["mean_metric"], ".", color=FG, ms=4, label="measured mean")
-                ax.plot(fit["fit_opd"], fit["fit_metric"], "-", color=GREEN, lw=1.5, label="envelope × sinusoid")
-                for candidate in fit["candidates"]:
-                    ax.axvline(candidate["opd_um"], color="#bf7cff", alpha=0.22)
+                estimate = result.estimates[key]
+                repetitions = np.asarray(result.maps[key], dtype=float)
+                for repeat_index, repetition in enumerate(repetitions):
+                    ax.plot(
+                        estimate["opd_um"],
+                        repetition,
+                        "-",
+                        color="#8e99a0",
+                        alpha=0.20,
+                        lw=0.7,
+                        label="individual repetitions" if repeat_index == 0 else None,
+                    )
+                ax.plot(
+                    estimate["opd_um"],
+                    estimate["mean_metric"],
+                    ".-",
+                    color=GREEN,
+                    ms=3,
+                    lw=1.3,
+                    label="measured mean",
+                )
+                best = estimate["best"]
+                ax.axvline(best["opd_um"], color="#bf7cff", alpha=0.65, linestyle=":", label="raw-flux minimum")
                 if result.recommendation.get("feasible"):
                     delta = result.recommendation[f"delta_11_{key.split('-')[1]}_um"]
                     ax.axvline(2 * delta, color=ORANGE, linestyle="--", label="selected")
-                ax.set(xlabel="OPD (µm)", ylabel="N / (FT1 + FT2)", title=f"Baseline {key}")
+                ax.set(
+                    xlabel="OPD (µm)",
+                    ylabel="Integrated null-channel flux (ADU)",
+                    title=(
+                        f"Baseline {key}\n"
+                        f"best Δp={best['delta_piston_um']:.3f} µm   OPD={best['opd_um']:.3f} µm"
+                    ),
+                )
                 self._style_axis(ax, grid=True)
+                ax.text(
+                    0.02,
+                    0.02,
+                    f"box {estimate['detector_box']}",
+                    transform=ax.transAxes,
+                    color=FG,
+                    fontsize=6.5,
+                    fontfamily="monospace",
+                    ha="left",
+                    va="bottom",
+                    bbox={"facecolor": BG, "edgecolor": "none", "alpha": 0.75, "pad": 2},
+                )
                 self._style_legend(ax.legend(fontsize=7))
             if result.recommendation.get("feasible"):
                 pistons = result.recommendation["pistons_um"]
+                fallback_used = bool(result.recommendation.get("fallback_used"))
+                fallback_message = (
+                    "DM-RANGE FALLBACK USED — neighbouring averaged-curve minimum selected\n"
+                    if fallback_used
+                    else ""
+                )
                 title = self.figure.suptitle(
-                    f"Chosen pistons  S11={pistons['11']:.3f}  S20={pistons['20']:.3f}  S31={pistons['31']:.3f} µm",
-                    color=GREEN,
+                    f"{fallback_message}Chosen pistons  S11={pistons['11']:.3f}  "
+                    f"S20={pistons['20']:.3f}  S31={pistons['31']:.3f} µm",
+                    color=ORANGE if fallback_used else GREEN,
+                    fontsize=11,
+                    fontfamily="monospace",
+                )
+                title.set_y(0.94)
+            else:
+                title = self.figure.suptitle(
+                    "NO FEASIBLE NULL MINIMUM WITHIN DM PISTON RANGE — neighbouring minima also checked",
+                    color=RED,
                     fontsize=11,
                     fontfamily="monospace",
                 )
@@ -2057,8 +2118,9 @@ class AlignmentGUI:
             try:
                 frames = self.hardware.camera_frames("apapane", nframes)
                 image = process_apapane_frame(frames, self.engine.apapane_dark)
-                stats = collect_null_statistics(image)
-                self.events.put(("null_live", image, stats, nframes))
+                detector_boxes = load_detector_boxes()
+                stats = collect_null_statistics(image, detector_boxes)
+                self.events.put(("null_live", image, stats, nframes, detector_boxes))
             except Exception as error:
                 self.events.put(("null_live_error", str(error)))
 
@@ -2087,7 +2149,17 @@ class AlignmentGUI:
         ax.text(0.5, 0.5, text, color=MUTED, ha="center", va="center", fontfamily="monospace")
         self.null_live_canvas.draw_idle()
 
-    def _draw_null_live(self, image: np.ndarray, statistics: dict, nframes: int) -> None:
+    def _draw_null_live(
+        self,
+        image: np.ndarray,
+        statistics: dict,
+        nframes: int,
+        detector_boxes: dict | None = None,
+    ) -> None:
+        box_config = detector_boxes or load_detector_boxes()
+        photometry_boxes = box_config["photometry"]
+        null_boxes = box_config["null"]
+        fringe_tracking_boxes = box_config["fringe_tracking"]
         self.null_live_figure.clear()
         self.null_live_figure.set_facecolor(BG)
         grid = self.null_live_figure.add_gridspec(
@@ -2117,15 +2189,15 @@ class AlignmentGUI:
             aspect="auto",
         )
         overlay_groups = (
-            (PHOT_BOXES, "cyan", lambda name: name),
-            (NULL_BOXES, "magenta", lambda name: name),
+            (photometry_boxes, "cyan", lambda name: name),
+            (null_boxes, "magenta", lambda name: name),
         )
         for boxes, colour, labeler in overlay_groups:
             for name, box in boxes.items():
                 y0, y1, bx0, bx1 = box
                 image_ax.add_patch(Rectangle((bx0, y0), bx1 - bx0, y1 - y0, fill=False, edgecolor=colour, lw=1.5))
                 image_ax.text(bx1 + 2, y0, labeler(name), color=colour, fontsize=6, va="bottom")
-        for null_name, boxes in FRINGE_TRACKING_BOXES.items():
+        for null_name, boxes in fringe_tracking_boxes.items():
             short = null_name.split("/")[0].strip()
             for ft_name, box in boxes.items():
                 y0, y1, bx0, bx1 = box
@@ -2162,7 +2234,7 @@ class AlignmentGUI:
             bbox=[0.01, 0.72, 0.98, 0.18],
         )
         null_rows = []
-        for name in NULL_BOXES:
+        for name in null_boxes:
             values = statistics[name]
             short, baseline = [part.strip() for part in name.split("/", 1)]
             null_rows.append([

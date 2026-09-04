@@ -68,6 +68,10 @@ def validate_scan_defaults(config: dict[str, Any], mount_limits: dict[str, tuple
         for key in ("nframes", "numavg", "max_iterations"):
             if key in scans[kind] and int(scans[kind][key]) < 1:
                 raise ValueError(f"{kind}.{key} must be at least 1")
+        if "settle_s" in scans[kind]:
+            settle_s = float(scans[kind]["settle_s"])
+            if not np.isfinite(settle_s) or settle_s < 0:
+                raise ValueError(f"{kind}.settle_s must be a finite non-negative value")
 
     bulk = scans["bulk"]
     crop = bulk.get("crop")
@@ -129,6 +133,16 @@ def validate_scan_defaults(config: dict[str, Any], mount_limits: dict[str, tuple
     com_threshold = float(scans["xy"].get("com_threshold", 0))
     if not 0 < com_threshold <= 1:
         raise ValueError("xy.com_threshold must be in (0, 1]")
+    null = scans["null"]
+    period_bounds = np.asarray(null.get("period_bounds_um", (1.2, 2.0)), dtype=float)
+    if period_bounds.shape != (2,) or not np.all(np.isfinite(period_bounds)) or not 0 < period_bounds[0] < period_bounds[1]:
+        raise ValueError("null.period_bounds_um must contain two increasing positive OPD periods")
+    min_fit_r2 = float(null.get("min_fit_r2", 0.35))
+    if not np.isfinite(min_fit_r2) or not 0 <= min_fit_r2 <= 1:
+        raise ValueError("null.min_fit_r2 must lie in [0, 1]")
+    max_invalid_fraction = float(null.get("max_invalid_fraction", 0.05))
+    if not np.isfinite(max_invalid_fraction) or not 0 <= max_invalid_fraction < 1:
+        raise ValueError("null.max_invalid_fraction must lie in [0, 1)")
 
 
 def segment_state(config: dict[str, Any], name: str) -> dict[int, SegmentPTT]:
@@ -232,6 +246,12 @@ def validate_config(config: dict[str, Any]) -> list[str]:
                     raise ValueError
             except (TypeError, ValueError):
                 warnings.append(f"instrument.mount.{key} must be a positive finite number.")
+        try:
+            poll_interval = float(mount.get("poll_interval_s", 0.02))
+            if not np.isfinite(poll_interval) or poll_interval <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            warnings.append("instrument.mount.poll_interval_s must be a positive finite number.")
         if not flat_volts.get("calibration_file"):
             warnings.append("dm_voltage_states.flat.calibration_file is missing; F0 is unavailable.")
         else:
