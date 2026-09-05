@@ -11,9 +11,9 @@ import matplotlib.patheffects as path_effects
 import numpy as np
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.colors import LinearSegmentedColormap, SymLogNorm
+from matplotlib.colors import LinearSegmentedColormap, Normalize, SymLogNorm
 from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle, RegularPolygon
+from matplotlib.patches import RegularPolygon
 from matplotlib.cm import ScalarMappable
 from matplotlib.ticker import FuncFormatter
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -25,7 +25,14 @@ from .camera_storage import CAMERA_LABELS, save_camera_frame
 from .config import rest_dm_maps, save_config, segment_state, validate_config, validate_scan_defaults
 from .engine import AlignmentEngine, ScanCancelled
 from .models import ScanResult
-from .null_live import collect_null_statistics, format_depth, format_flux, process_apapane_frame
+from .null_live import (
+    collect_null_statistics,
+    format_depth,
+    format_flux,
+    load_wavelength_calibration,
+    process_apapane_frame,
+    wavelength_markers,
+)
 from .storage import begin_alignment, finalize_result, save_final_configuration, save_result, save_review_figure
 from .workflow_status import WorkflowStatus
 
@@ -38,6 +45,23 @@ ORANGE = "#ff9f1c"
 RED = "#ff4d6d"
 GRID = "#48514c"
 ALIEN_X_SHIFT = -10
+WAVELENGTH_CMAP = LinearSegmentedColormap.from_list(
+    "black_safe_wavelength",
+    [
+        "#e65cff",
+        "#9b6cff",
+        "#527dff",
+        "#00bfff",
+        "#00f5ff",
+        "#00ff9d",
+        "#5cff45",
+        "#c9ff24",
+        "#fff12b",
+        "#ff9f1c",
+        "#ff4d4d",
+    ],
+    N=256,
+)
 
 LABELS = {
     "focal_dark": "1  Focal-plane dark",
@@ -2119,8 +2143,18 @@ class AlignmentGUI:
                 frames = self.hardware.camera_frames("apapane", nframes)
                 image = process_apapane_frame(frames, self.engine.apapane_dark)
                 detector_boxes = load_detector_boxes()
+                wavelength_calibration = load_wavelength_calibration(self.config)
                 stats = collect_null_statistics(image, detector_boxes)
-                self.events.put(("null_live", image, stats, nframes, detector_boxes))
+                self.events.put(
+                    (
+                        "null_live",
+                        image,
+                        stats,
+                        nframes,
+                        detector_boxes,
+                        wavelength_calibration,
+                    )
+                )
             except Exception as error:
                 self.events.put(("null_live_error", str(error)))
 
@@ -2155,59 +2189,92 @@ class AlignmentGUI:
         statistics: dict,
         nframes: int,
         detector_boxes: dict | None = None,
+        wavelength_calibration: dict | None = None,
     ) -> None:
         box_config = detector_boxes or load_detector_boxes()
-        photometry_boxes = box_config["photometry"]
         null_boxes = box_config["null"]
-        fringe_tracking_boxes = box_config["fringe_tracking"]
+        calibration = wavelength_calibration or load_wavelength_calibration(self.config)
+        markers = wavelength_markers(calibration)
+        marker_x = np.asarray([item["x"] for item in markers], dtype=float)
+        marker_y = np.asarray([item["y"] for item in markers], dtype=float)
+        marker_wavelength = np.asarray([item["wavelength_nm"] for item in markers], dtype=float)
+        wavelength_min, wavelength_max = map(float, calibration["calibrated_range_nm"])
+        wavelength_norm = Normalize(vmin=wavelength_min, vmax=wavelength_max)
+        wavelength_cmap = WAVELENGTH_CMAP
         self.null_live_figure.clear()
         self.null_live_figure.set_facecolor(BG)
         grid = self.null_live_figure.add_gridspec(
             1,
-            2,
-            left=0.09,
-            right=0.97,
+            3,
+            left=0.075,
+            right=0.975,
             bottom=0.14,
             top=0.89,
-            width_ratios=[1.60, 1.40],
-            wspace=0.18,
+            width_ratios=[1.48, 0.055, 1.40],
+            wspace=0.20,
         )
         image_ax = self.null_live_figure.add_subplot(grid[0, 0])
-        stats_ax = self.null_live_figure.add_subplot(grid[0, 1])
-        x0, x1 = self.config.get("null_live", {}).get("display_x", [200, image.shape[1]])
-        x0, x1 = max(0, int(x0)), min(image.shape[1], int(x1))
-        cropped = image[:, x0:x1]
-        vmin, vmax = np.nanpercentile(cropped, [1, 99.5])
+        wavelength_ax = self.null_live_figure.add_subplot(grid[0, 1])
+        stats_ax = self.null_live_figure.add_subplot(grid[0, 2])
+        x_padding = max(8.0, 0.04 * float(np.ptp(marker_x)))
+        y_padding = max(6.0, 0.03 * float(np.ptp(marker_y)))
+        x0 = max(0.0, float(np.min(marker_x) - x_padding))
+        x1 = min(float(image.shape[1]), float(np.max(marker_x) + x_padding))
+        y0 = max(0.0, float(np.min(marker_y) - y_padding))
+        y1 = min(float(image.shape[0]), float(np.max(marker_y) + y_padding))
+        visible = image[
+            max(0, int(np.floor(y0))) : min(image.shape[0], int(np.ceil(y1)) + 1),
+            max(0, int(np.floor(x0))) : min(image.shape[1], int(np.ceil(x1)) + 1),
+        ]
+        finite_visible = visible[np.isfinite(visible)]
+        if finite_visible.size:
+            vmin, vmax = np.percentile(finite_visible, [10.0, 99.7])
+        else:
+            vmin, vmax = 0.0, 1.0
+        if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax <= vmin:
+            vmin = float(np.nanmin(image)) if np.any(np.isfinite(image)) else 0.0
+            vmax = vmin + 1.0
         image_ax.imshow(
-            cropped,
+            image,
             origin="lower",
-            cmap="magma",
+            cmap="gray",
             vmin=vmin,
             vmax=vmax,
             interpolation="nearest",
-            extent=[x0, x1, 0, image.shape[0]],
+            extent=[0, image.shape[1], 0, image.shape[0]],
             aspect="auto",
         )
-        overlay_groups = (
-            (photometry_boxes, "cyan", lambda name: name),
-            (null_boxes, "magenta", lambda name: name),
+        image_ax.scatter(
+            marker_x,
+            marker_y,
+            c=marker_wavelength,
+            cmap=wavelength_cmap,
+            norm=wavelength_norm,
+            s=11,
+            marker="o",
+            edgecolors=BG,
+            linewidths=0.25,
+            zorder=3,
         )
-        for boxes, colour, labeler in overlay_groups:
-            for name, box in boxes.items():
-                y0, y1, bx0, bx1 = box
-                image_ax.add_patch(Rectangle((bx0, y0), bx1 - bx0, y1 - y0, fill=False, edgecolor=colour, lw=1.5))
-                image_ax.text(bx1 + 2, y0, labeler(name), color=colour, fontsize=6, va="bottom")
-        for null_name, boxes in fringe_tracking_boxes.items():
-            short = null_name.split("/")[0].strip()
-            for ft_name, box in boxes.items():
-                y0, y1, bx0, bx1 = box
-                image_ax.add_patch(Rectangle((bx0, y0), bx1 - bx0, y1 - y0, fill=False, edgecolor="lime", lw=1.1))
-                image_ax.text(bx1 + 2, y0, f"{short} {ft_name}", color="lime", fontsize=6, va="bottom")
+        image_ax.set_xlim(x0, x1)
+        image_ax.set_ylim(y0, y1)
         image_ax.set(xlabel="x pixel", ylabel="y pixel")
         image_ax.set_title(f"APAPANE FRAME — AVG {nframes} FRAMES", fontsize=9, pad=6)
         image_ax.xaxis.label.set_size(8)
         image_ax.yaxis.label.set_size(8)
         self._style_axis(image_ax)
+
+        wavelength_scale = ScalarMappable(norm=wavelength_norm, cmap=wavelength_cmap)
+        wavelength_scale.set_array([])
+        wavelength_ticks = sorted({float(item["wavelength_nm"]) for item in markers})
+        wavelength_colorbar = self.null_live_figure.colorbar(
+            wavelength_scale,
+            cax=wavelength_ax,
+            orientation="vertical",
+            ticks=wavelength_ticks,
+        )
+        wavelength_colorbar.ax.set_title("λ\n(nm)", color=GREEN, fontsize=7, fontfamily="monospace", pad=6)
+        self._style_colorbar(wavelength_colorbar)
 
         stats_ax.set_facecolor(BG)
         stats_ax.axis("off")

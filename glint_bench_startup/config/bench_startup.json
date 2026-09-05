@@ -1,0 +1,123 @@
+{
+  "comment": "Standalone scexao5 GLINT bench restoration. This file does not belong to the alignment-GUI configuration.",
+  "host": "scexao5",
+  "environment": {
+    "DISPLAY": ":3",
+    "PYTHONUNBUFFERED": "1"
+  },
+  "paths": {
+    "tmux": "tmux",
+    "bash": "/bin/bash",
+    "xterm": "/usr/bin/xterm",
+    "wmctrl": "/usr/bin/wmctrl",
+    "shm_viewer": "/home/scexao/miniforge3/bin/shmImshow.py",
+    "probe_python": "/home/scexao/miniforge3/bin/python",
+    "pycapture_python": "/home/scexao/miniforge3/envs/pycapture/bin/python",
+    "gui_python": "/home/scexao/miniforge3/bin/python",
+    "milk_makecsetandrt": "/usr/local/milk/bin/milk-makecsetandrt",
+    "dm_driver": "/home/scexao/src/hardwaresecrets/bin/hwint-bmc111"
+  },
+  "logging": {
+    "path": "/home/scexao/glint/glint/bench_startup_logs/glint_bench_startup.log"
+  },
+  "locking": {
+    "path": "/tmp/glint_bench_startup.lock"
+  },
+  "camera": {
+    "controller_session": "glintpg_ctrl",
+    "service_script": "../glint_pg_service.py",
+    "startup_timeout_s": 45.0,
+    "stabilization_s": 12.0,
+    "usb_release_s": 4.0,
+    "restart_attempts": 2,
+    "error20_occurrences_for_restart": 2,
+    "controller_command_tokens": ["python", "ipython"],
+    "framegrab_command_tokens": ["python"],
+    "cameras": {
+      "pg1": {
+        "name": "glintpg1",
+        "stream": "glintpg1",
+        "mode": "FULL",
+        "serial": 15322651,
+        "role": "pupil plane",
+        "framegrab_session": "glintpg1_fgrab"
+      },
+      "pg2": {
+        "name": "glintpg2",
+        "stream": "glintpg2",
+        "mode": "FULL",
+        "serial": 15322653,
+        "role": "focal plane",
+        "framegrab_session": "glintpg2_fgrab"
+      }
+    }
+  },
+  "dm": {
+    "session": "glint_dm",
+    "cpu_set": "g_work",
+    "realtime_priority": 45,
+    "driver_args": ["-r", "-g"],
+    "driver_command_tokens": ["hwint-bmc111"],
+    "required_shms": ["dmptt", "dmvolt"],
+    "expected_elements": 111,
+    "startup_timeout_s": 30.0,
+    "startup_state_command": null,
+    "comment": "The supervisor starts the driver and verifies SHMs but deliberately sends no DM state."
+  },
+  "shm": {
+    "apapane": "apapane",
+    "live_probe_timeout_s": 2.0,
+    "comment": "APAPANE is verified only; this program never starts it."
+  },
+  "gui": {
+    "working_directory": "/home/scexao/glint/glint/glint_alignment_refactor",
+    "script": "run_instrument.py",
+    "config": "/home/scexao/glint/glint/glint_alignment_refactor/config/instrument.json",
+    "window_title_contains": "GLINT Alignment"
+  },
+  "windows": {
+    "screen_size": [2560, 1440],
+    "window_timeout_s": 20.0,
+    "xterm_font": "Monospace",
+    "xterm_font_size": 9,
+    "comment": "Pixel rectangles reproduce pane3scexao5layout.png. The two frame-grabber terminals intentionally share the viewer rectangles and are raised first, leaving each viewer on top.",
+    "layout": {
+      "glint_gui": {
+        "rect": [0, 0, 1470, 940],
+        "title_contains": "GLINT Alignment"
+      },
+      "glintpg1_fgrab": {
+        "rect": [0, 940, 680, 500],
+        "title": "GLINT PG1 FGRAB"
+      },
+      "glintpg1_viewer": {
+        "rect": [0, 940, 680, 500],
+        "title_contains": "glintpg1.im.shm"
+      },
+      "glintpg2_fgrab": {
+        "rect": [680, 940, 790, 500],
+        "title": "GLINT PG2 FGRAB"
+      },
+      "glintpg2_viewer": {
+        "rect": [680, 940, 790, 500],
+        "title_contains": "glintpg2.im.shm"
+      },
+      "glint_dm": {
+        "rect": [1470, 0, 420, 465],
+        "title": "GLINT DM"
+      },
+      "glintpg_ctrl": {
+        "rect": [1890, 0, 670, 465],
+        "title": "GLINT PG CTRL"
+      },
+      "gui_terminal": {
+        "rect": [1470, 465, 1090, 450],
+        "title": "GLINT GUI LOG"
+      },
+      "general_terminal": {
+        "rect": [1470, 915, 1090, 525],
+        "title": "GLINT GENERAL"
+      }
+    }
+  }
+}
