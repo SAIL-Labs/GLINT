@@ -56,19 +56,41 @@ expected_size = int(expected_size_text)
 shm = SHM(name)
 data = shm.get_data(check=False)
 if mode == "live":
-    first_acqtime = shm.IMAGE.md.acqtime
+    def unwrap_keyword(value):
+        if isinstance(value, (tuple, list)) and value:
+            return value[0]
+        return value
+
+    def read_frame_marker():
+        # camstack's FlyCapture grabber explicitly refreshes _MAQTIME for
+        # every published image. On scexao5 the generic ImageStreamIO
+        # acqtime field remains fixed at 1970-01-01 and must not be used.
+        maqtime = unwrap_keyword(shm.get_keywords().get("_MAQTIME"))
+        if maqtime is not None:
+            return "_MAQTIME", maqtime
+        try:
+            return "cnt0", int(shm.IMAGE.md.cnt0)
+        except (AttributeError, TypeError, ValueError):
+            return None, None
+
+    marker_name, first_marker = read_frame_marker()
+    if marker_name is None:
+        raise RuntimeError(
+            f"{name}: no _MAQTIME keyword or ImageStreamIO cnt0 counter"
+        )
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         time.sleep(0.05)
-        if shm.IMAGE.md.acqtime != first_acqtime:
+        current_name, current_marker = read_frame_marker()
+        if current_name == marker_name and current_marker != first_marker:
             break
     else:
-        raise TimeoutError(f"{name}: acquisition timestamp did not advance")
+        raise TimeoutError(f"{name}: {marker_name} did not advance")
 if expected_size >= 0 and np.asarray(data).size != expected_size:
     raise RuntimeError(
         f"{name}: expected {expected_size} elements, got {np.asarray(data).size}"
     )
-print(tuple(np.asarray(data).shape))
+print(tuple(np.asarray(data).shape), marker_name if mode == "live" else "read")
 """
 
 
