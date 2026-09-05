@@ -649,7 +649,23 @@ class AlignmentEngine:
                 span=2.0 * (maximum - minimum),
                 step=piston_step,
             ).values()
-            baselines = [(11, 20), (11, 31)]
+
+            # The one-segment-at-a-time trajectory changes which segment moves at
+            # differential piston zero.  Make that turning point an explicit
+            # sample even if a future configuration does not land on it exactly.
+            zero_tolerance = 1e-12 * max(1.0, abs(maximum - minimum))
+            zero_hits = np.flatnonzero(np.isclose(differential_positions, 0.0, atol=zero_tolerance, rtol=0.0))
+            if len(zero_hits):
+                differential_positions[int(zero_hits[0])] = 0.0
+            else:
+                differential_positions = np.sort(np.append(differential_positions, 0.0))
+
+            # Scan one physical baseline at a time.  For every measured step only
+            # ONE of the two baseline pistons is allowed to change:
+            #   leg 1: A moves minimum -> maximum while B stays at maximum;
+            #   leg 2: A stays at maximum while B moves maximum -> minimum.
+            # The third injected segment remains fixed at its zero-PTT reference.
+            baselines = [(11, 31), (11, 20)]
             maps: dict[str, np.ndarray] = {}
             estimates: dict[str, dict] = {}
             total = len(baselines) * int(params["numavg"]) * len(differential_positions)
@@ -658,51 +674,186 @@ class AlignmentEngine:
             reference = segment_state(self.config, "zero_ptt")
             base_state = self._rest_dm_state()
             scan_boxes = differential_null_boxes()
-            # Match the working telescope script: all three injected segments
-            # retain the tip/tilt found by step 7, including the segment not in
-            # the current baseline.  Their scan-reference pistons come from PTT0.
+
+            # Preserve the optimized tip/tilt of all three injected segments.
+            # Only their pistons are manipulated during the null scan.
             for segment in INJECTED_SEGMENTS:
                 base_state[segment] = deepcopy(current[segment])
                 base_state[segment].piston_um = float(reference[segment].piston_um)
+
             settle_s = self._scan_settle(params)
             simulator_selector = getattr(self.hardware, "set_null_scan_baseline", None)
+
+            # Put only the NON-INJECTED segments into the selected REST OF DM
+            # state.  The three injected segments are deliberately left untouched
+            # here so that their piston changes can subsequently be issued one
+            # segment at a time.
+            state = self.hardware.get_dm()
+            for segment in range(37):
+                if segment not in INJECTED_SEGMENTS:
+                    state[segment] = deepcopy(base_state[segment])
+            self.hardware.set_dm(state)
+            self._settle(settle_s)
+
+            def command_one_piston(segment: int, target_um: float) -> bool:
+                """Change exactly one injected piston in one DM command.
+
+                The hardware interface receives a full DM state, but every other
+                state entry is kept identical to the last commanded state.  Thus
+                only ``segment`` has a changed piston target in this command.
+                Returns True when a physical piston change was commanded.
+                """
+                nonlocal state
+                target = float(target_um)
+                current_piston = float(state[segment].piston_um)
+                if np.isclose(current_piston, target, atol=1e-12, rtol=0.0):
+                    return False
+                state[segment].piston_um = target
+                self.hardware.set_dm(state)
+                self._settle(settle_s)
+                return True
+
             try:
                 for baseline in baselines:
                     a, b = baseline
+                    fixed_segment = next(
+                        segment for segment in INJECTED_SEGMENTS if segment not in baseline
+                    )
                     box = scan_boxes[baseline]
+
+                    # Keep the non-participating injected segment fixed throughout
+                    # this baseline.  If a previous baseline left it elsewhere,
+                    # park it with a single-segment piston command.
+                    command_one_piston(
+                        fixed_segment,
+                        float(base_state[fixed_segment].piston_um),
+                    )
+
                     if simulator_selector is not None:
                         simulator_selector(baseline)
-                    repetitions: list[list[float]] = []
-                    best_per_repeat: list[dict[str, float | int | str]] = []
-                    for repeat in range(int(params["numavg"])):
-                        state = deepcopy(base_state)
-                        fluxes: list[float] = []
-                        for differential in differential_positions:
-                            piston_a, piston_b = self._pair_pistons_for_differential(
+
+                    piston_pairs = np.asarray(
+                        [
+                            self._pair_pistons_for_differential(
                                 float(differential),
                                 minimum,
                                 maximum,
                                 float(reference[a].piston_um),
                                 float(reference[b].piston_um),
                             )
-                            state[a].piston_um = piston_a
-                            state[b].piston_um = piston_b
-                            self.hardware.set_dm(state)
-                            self._settle(settle_s)
+                            for differential in differential_positions
+                        ],
+                        dtype=float,
+                    )
+
+                    # Hard trajectory checks.  These make a regression to the old
+                    # simultaneous cross-sweep fail immediately instead of silently
+                    # changing the physical scan.
+                    if not (
+                        np.isclose(piston_pairs[0, 0], minimum, atol=1e-12)
+                        and np.isclose(piston_pairs[0, 1], maximum, atol=1e-12)
+                        and np.isclose(piston_pairs[-1, 0], maximum, atol=1e-12)
+                        and np.isclose(piston_pairs[-1, 1], minimum, atol=1e-12)
+                    ):
+                        raise RuntimeError(
+                            f"Null {a}-{b} trajectory endpoints are incorrect: "
+                            f"first=({piston_pairs[0, 0]:g}, {piston_pairs[0, 1]:g}), "
+                            f"last=({piston_pairs[-1, 0]:g}, {piston_pairs[-1, 1]:g})"
+                        )
+                    pair_changes = ~np.isclose(
+                        np.diff(piston_pairs, axis=0),
+                        0.0,
+                        atol=1e-12,
+                        rtol=0.0,
+                    )
+                    if np.any(np.sum(pair_changes, axis=1) > 1):
+                        raise RuntimeError(
+                            f"Null {a}-{b} trajectory would move both baseline segments in one measured step"
+                        )
+
+                    repetitions: list[list[float]] = []
+                    best_per_repeat: list[dict[str, float | int | str]] = []
+                    for repeat in range(int(params["numavg"])):
+                        # Reposition to the first sample WITHOUT ever changing two
+                        # injected pistons in the same command.  B is placed at MAX
+                        # first, then A at MIN.  The first flux sample is acquired
+                        # only after this start state has been reached.
+                        start_a = float(piston_pairs[0, 0])
+                        start_b = float(piston_pairs[0, 1])
+                        command_one_piston(b, start_b)
+                        command_one_piston(a, start_a)
+
+                        fluxes: list[float] = []
+                        previous_a = start_a
+                        previous_b = start_b
+
+                        for index, differential in enumerate(differential_positions):
+                            piston_a = float(piston_pairs[index, 0])
+                            piston_b = float(piston_pairs[index, 1])
+
+                            changed_a = not np.isclose(previous_a, piston_a, atol=1e-12, rtol=0.0)
+                            changed_b = not np.isclose(previous_b, piston_b, atol=1e-12, rtol=0.0)
+                            if changed_a and changed_b:
+                                raise RuntimeError(
+                                    f"Null {a}-{b} attempted simultaneous piston motion at "
+                                    f"differential={float(differential):g} um"
+                                )
+
+                            moved_segment: int | None = None
+                            if changed_a:
+                                command_one_piston(a, piston_a)
+                                moved_segment = a
+                            elif changed_b:
+                                command_one_piston(b, piston_b)
+                                moved_segment = b
+
+                            # The inactive injected segment must remain parked for
+                            # the complete baseline measurement.
+                            if not np.isclose(
+                                float(state[fixed_segment].piston_um),
+                                float(base_state[fixed_segment].piston_um),
+                                atol=1e-12,
+                                rtol=0.0,
+                            ):
+                                raise RuntimeError(
+                                    f"Fixed segment {fixed_segment} changed during null baseline {a}-{b}"
+                                )
+
                             fluxes.append(self._null_flux(box, int(params["nframes"])))
                             progress_count += 1
-                            self.progress(f"Null {a}-{b}, repeat {repeat + 1}", progress_count, total)
+                            motion_text = (
+                                "start position"
+                                if moved_segment is None
+                                else f"only p{moved_segment} moved"
+                            )
+                            self.progress(
+                                (
+                                    f"Null {a}-{b}, repeat {repeat + 1}: "
+                                    f"p{a}={piston_a:+.4f} um, "
+                                    f"p{b}={piston_b:+.4f} um, "
+                                    f"p{fixed_segment}={state[fixed_segment].piston_um:+.4f} um fixed; "
+                                    f"{motion_text}"
+                                ),
+                                progress_count,
+                                total,
+                            )
+                            previous_a = piston_a
+                            previous_b = piston_b
+
                         repetitions.append(fluxes)
                         best_per_repeat.append(
-                            self._parabolic_minimum(differential_positions, np.asarray(fluxes, dtype=float))
+                            self._parabolic_minimum(
+                                differential_positions,
+                                np.asarray(fluxes, dtype=float),
+                            )
                         )
+
                     repetition_array = np.asarray(repetitions, dtype=float)
                     mean_flux = np.mean(repetition_array, axis=0)
                     # Select from the curve shown in the review.  Averaging the
-                    # independently selected positions is invalid for a
-                    # periodic scan: different repeats may choose neighbouring
-                    # fringe orders and their arithmetic mean can lie on a
-                    # maximum.  Individual minima remain saved as diagnostics.
+                    # independently selected positions is invalid for a periodic
+                    # scan: different repeats may choose neighbouring fringe orders
+                    # and their arithmetic mean can lie on a maximum.
                     candidates = self._null_minimum_candidates(
                         differential_positions,
                         mean_flux,
@@ -728,20 +879,27 @@ class AlignmentEngine:
                         "detector_box": list(box),
                         "opd_um": 2.0 * differential_positions,
                         "differential_piston_um": differential_positions,
+                        "piston_first_um": piston_pairs[:, 0],
+                        "piston_second_um": piston_pairs[:, 1],
                         "mean_metric": mean_flux,
                         "best_per_repeat": best_per_repeat,
                         "averaged_curve_minimum": combined_best,
                         # Candidate zero is the deepest minimum of the averaged
-                        # curve. Further entries are neighbouring fringe
-                        # minima, ordered by distance from that minimum. They
-                        # are used only when the deepest-minimum pair cannot be
-                        # represented inside all three DM piston ranges.
+                        # curve. Further entries are neighbouring fringe minima,
+                        # ordered by distance from that minimum. They are used only
+                        # when the deepest-minimum pair cannot be represented inside
+                        # all three DM piston ranges.
                         "candidates": candidates,
                         "best": candidate,
+                        "scan_segments": [a, b],
+                        "fixed_segment": fixed_segment,
+                        "fixed_piston_um": float(base_state[fixed_segment].piston_um),
+                        "motion_rule": "one injected baseline segment changes per measured step",
                     }
             finally:
                 if simulator_selector is not None:
                     simulator_selector(None)
+
             solution = self._solve_null_pistons_with_neighbours(
                 estimates["11-20"]["candidates"],
                 estimates["11-31"]["candidates"],
@@ -763,10 +921,16 @@ class AlignmentEngine:
                     "rest_of_dm": self.rest_dm_selection(),
                     "sample_count": total,
                     "settle_s_per_sample": settle_s,
-                    "scan_sequence": "Differential piston minimum-to-maximum with both baseline segments moved symmetrically",
+                    "scan_sequence": (
+                        "One baseline at a time; first segment moves min-to-max while second stays at max, "
+                        "then first stays at max while second moves max-to-min; third injected segment fixed"
+                    ),
+                    "motion_invariant": "at most one injected baseline piston changes between measured samples",
                     "opd_definition": "2 * (piston_first - piston_second)",
                     "measurement_definition": "dark-subtracted integrated raw null-channel flux",
-                    "injected_dm_state": "all three retain current optimized tip/tilt; third piston held at zero-PTT reference",
+                    "injected_dm_state": (
+                        "all three retain current optimized tip/tilt; third piston held at zero-PTT reference"
+                    ),
                 },
             )
 
@@ -780,14 +944,43 @@ class AlignmentEngine:
         reference_a: float,
         reference_b: float,
     ) -> tuple[float, float]:
-        """Choose pA/pB with pA-pB=d and a near-reference common piston."""
-        common_low = max(minimum - differential / 2.0, minimum + differential / 2.0)
-        common_high = min(maximum - differential / 2.0, maximum + differential / 2.0)
-        if common_low > common_high + 1e-12:
-            raise ValueError(f"Differential piston {differential:g} is outside the feasible range")
-        desired_common = 0.5 * (reference_a + reference_b)
-        common = float(np.clip(desired_common, common_low, common_high))
-        return float(common + differential / 2.0), float(common - differential / 2.0)
+        """Return the one-segment-at-a-time piston pair for one baseline.
+
+        Let ``d = pA - pB`` and ``span = maximum - minimum``.
+
+        * For ``-span <= d <= 0``: B is held at ``maximum`` and only A moves
+          from ``minimum`` to ``maximum``.
+        * For ``0 <= d <= +span``: A is held at ``maximum`` and only B moves
+          from ``maximum`` to ``minimum``.
+
+        The full differential range is therefore unchanged, but adjacent scan
+        samples never require both baseline pistons to move simultaneously.
+        ``reference_a`` and ``reference_b`` remain in the signature for backward
+        compatibility and intentionally do not affect the scan trajectory.
+        """
+        del reference_a, reference_b
+        span = float(maximum - minimum)
+        if not np.isfinite(span) or span <= 0:
+            raise ValueError("Null-scan maximum piston must be greater than minimum piston")
+
+        differential_min = -span
+        differential_max = span
+        tolerance = 1e-12 * max(1.0, abs(span))
+        d = float(differential)
+        if d < differential_min - tolerance or d > differential_max + tolerance:
+            raise ValueError(f"Differential piston {d:g} is outside the feasible range")
+        d = float(np.clip(d, differential_min, differential_max))
+
+        if d <= 0.0:
+            # Leg 1: B remains at MAX; A alone moves MIN -> MAX.
+            piston_a = maximum + d
+            piston_b = maximum
+        else:
+            # Leg 2: A remains at MAX; B alone moves MAX -> MIN.
+            piston_a = maximum
+            piston_b = maximum - d
+
+        return float(piston_a), float(piston_b)
 
     @staticmethod
     def _parabolic_minimum(x: np.ndarray, y: np.ndarray) -> dict[str, float | int | str]:

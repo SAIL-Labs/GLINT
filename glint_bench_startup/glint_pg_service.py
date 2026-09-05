@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Interactive GLINT Point Grey camera controller used by glintpg_ctrl.
 
-The service intentionally lives outside camstack. It removes the frame-grabber
-dependency on ``conda activate`` and repairs FlyCapture bus-generation error 20
-by rebuilding only the stale control handle.
+The service intentionally lives outside camstack. It preserves the installed
+camstack frame-grabber command, initializes the tmux shell through ``~/.bashrc``,
+and repairs FlyCapture bus-generation error 20 by rebuilding only the stale
+control handle.
 """
 
 from __future__ import annotations
@@ -13,9 +14,7 @@ import atexit
 import json
 import logging
 from pathlib import Path
-import shlex
 import signal
-import sys
 import threading
 import traceback
 from typing import Any
@@ -57,24 +56,20 @@ def build_camera_class() -> type[Any]:
     from camstack.cams.flycapturecam import Chameleon3
 
     class GlintChameleon3(Chameleon3):
-        """Chameleon3 with deterministic fgrab Python and error-20 recovery."""
+        """Chameleon3 with native backend startup and error-20 recovery."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             self._glint_reconnect_lock = threading.Lock()
             super().__init__(*args, **kwargs)
 
         def _prepare_backend_cmdline(self, reuse_shm: bool = False) -> None:
-            # Camstack normally sends "conda activate pycapture" to a fresh
-            # tmux shell. That shell may not have conda initialized and the
-            # constructor then waits forever for an SHM that is never made.
-            # sys.executable is already the validated pycapture interpreter.
-            python = shlex.quote(sys.executable)
+            # Let the telescope's installed camstack version build the native
+            # frame-grabber command.  Only prepend the shell initialization that
+            # is required in the fresh tmux shell used by camstack.
+            super()._prepare_backend_cmdline(reuse_shm=reuse_shm)
             self.taker_tmux_command = (
-                f"{python} -m camstack.acq.flycapture_grab "
-                f"-s {shlex.quote(self.STREAMNAME)} -u {int(self.fly_number)} -l 0"
+                f"source ~/.bashrc; {self.taker_tmux_command}"
             )
-            if reuse_shm:
-                self.taker_tmux_command += " -R"
 
         def _reconnect_control_handle(self) -> None:
             with self._glint_reconnect_lock:
