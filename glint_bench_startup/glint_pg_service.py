@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Interactive GLINT Point Grey camera controller used by glintpg_ctrl.
 
-The service intentionally lives outside camstack. It preserves the installed
-camstack frame-grabber command, initializes the tmux shell through ``~/.bashrc``,
-and repairs FlyCapture bus-generation error 20 by rebuilding only the stale
-control handle.
+The service intentionally lives outside camstack. It preserves the native
+frame-grabber command provided by the camstack version installed on scexao5,
+loads the established SCExAO shell environment before that command, and repairs
+FlyCapture bus-generation error 20 by rebuilding only the stale control handle.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import atexit
 import json
 import logging
 from pathlib import Path
+import shlex
 import signal
 import threading
 import traceback
@@ -56,19 +57,28 @@ def build_camera_class() -> type[Any]:
     from camstack.cams.flycapturecam import Chameleon3
 
     class GlintChameleon3(Chameleon3):
-        """Chameleon3 with native backend startup and error-20 recovery."""
+        """Chameleon3 with deterministic fgrab Python and error-20 recovery."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             self._glint_reconnect_lock = threading.Lock()
             super().__init__(*args, **kwargs)
 
         def _prepare_backend_cmdline(self, reuse_shm: bool = False) -> None:
-            # Let the telescope's installed camstack version build the native
-            # frame-grabber command.  Only prepend the shell initialization that
-            # is required in the fresh tmux shell used by camstack.
-            super()._prepare_backend_cmdline(reuse_shm=reuse_shm)
+            # Do not invent a frame-grabber module name here. The camstack
+            # deployed on scexao5 does not necessarily have the same entry
+            # point as newer upstream versions. Ask the installed Chameleon3
+            # implementation to construct its own compatible command.
+            super()._prepare_backend_cmdline(reuse_shm)
+            if not self.taker_tmux_command:
+                raise RuntimeError("Installed camstack produced no frame-grabber command")
+
+            # This automates the proven manual recovery procedure. In
+            # particular it initializes the conda shell function and any
+            # SCExAO variables/activation hooks required by the installed
+            # camstack command before it is executed in the fgrab pane.
+            bashrc = shlex.quote(str(Path.home() / ".bashrc"))
             self.taker_tmux_command = (
-                f"source ~/.bashrc; {self.taker_tmux_command}"
+                f"source {bashrc}; {self.taker_tmux_command}"
             )
 
         def _reconnect_control_handle(self) -> None:

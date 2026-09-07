@@ -80,42 +80,42 @@
     "window_timeout_s": 20.0,
     "xterm_font": "Monospace",
     "xterm_font_size": 9,
-    "comment": "Pixel rectangles reproduce pane3scexao5layout.png. The two frame-grabber terminals intentionally share the viewer rectangles and are raised first, leaving each viewer on top.",
+    "comment": "Pixel rectangles reproduce GUI_SIZE_FINAL.png on the 2560x1440 VNC desktop. Each frame-grabber terminal occupies the narrow column immediately to the right of its camera viewer.",
     "layout": {
       "glint_gui": {
-        "rect": [0, 0, 1470, 940],
+        "rect": [0, 0, 1664, 900],
         "title_contains": "GLINT Alignment"
       },
       "glintpg1_fgrab": {
-        "rect": [0, 940, 680, 500],
+        "rect": [678, 928, 99, 512],
         "title": "GLINT PG1 FGRAB"
       },
       "glintpg1_viewer": {
-        "rect": [0, 940, 680, 500],
+        "rect": [0, 928, 678, 512],
         "title_contains": "glintpg1.im.shm"
       },
       "glintpg2_fgrab": {
-        "rect": [680, 940, 790, 500],
+        "rect": [1567, 928, 97, 512],
         "title": "GLINT PG2 FGRAB"
       },
       "glintpg2_viewer": {
-        "rect": [680, 940, 790, 500],
+        "rect": [777, 928, 790, 512],
         "title_contains": "glintpg2.im.shm"
       },
       "glint_dm": {
-        "rect": [1470, 0, 420, 465],
+        "rect": [1664, 0, 418, 476],
         "title": "GLINT DM"
       },
       "glintpg_ctrl": {
-        "rect": [1890, 0, 670, 465],
+        "rect": [2082, 0, 478, 476],
         "title": "GLINT PG CTRL"
       },
       "gui_terminal": {
-        "rect": [1470, 465, 1090, 450],
+        "rect": [1664, 476, 896, 452],
         "title": "GLINT GUI LOG"
       },
       "general_terminal": {
-        "rect": [1470, 915, 1090, 525],
+        "rect": [1664, 928, 896, 512],
         "title": "GLINT GENERAL"
       }
     }
