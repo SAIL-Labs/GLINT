@@ -1,6 +1,6 @@
 # GLINT Alignment Refactor: Structure, Dependencies and File Storage
 
-Version 0.4.8
+Version 0.4.9
 
 ## 1. Quick reference
 
@@ -123,7 +123,7 @@ If parsing, validation or writing fails, the previous on-disk and in-memory defa
 
 | External dependency | Interface used by this refactor |
 | --- | --- |
-| `pyMilk.interfacing.shm.SHM(name)` | Attach directly to the existing JSON-named `dmptt`, `dmvolt`, APAPANE, Palila, focal and pupil SHM streams. No legacy DM wrapper is imported. |
+| `pyMilk.interfacing.shm.SHM(name)` | Attach directly to the existing JSON-named `dmptt`, `dmvolt`, APAPANE, Palila, focal and pupil SHM streams. Whole-state operations publish complete arrays. Single-segment edits and null increments use a fresh `dmptt` read/modify/write equivalent to the legacy `DM.set_segment` behavior, without importing the legacy wrapper. |
 | Packaged `SurugaMount` | Opens the configured DS102 serial device and preserves the established `AXI...` and `STOP` wire commands for position/readback, motion state, controller-limit queries and stop. It has no private log path. |
 | `glint_steering2` executable | `u/v status` and `u/v goto value`. `glint_steering1` is never commanded. |
 | Focal-reference FITS pair | Bright and dark reference PSFs used by bulk alignment. |
@@ -238,7 +238,7 @@ Review products are first saved as `awaiting_review`. Apply, Redo or Restore/Exi
 1. Back up `config/instrument.json`, `detector_boxes.json` and `response_matrix.npy` together.
 2. Confirm that the active JSON path shown in the Workflow editor is the intended telescope file before pressing Update.
 3. Validate all 37 segment-specific `tilted_away` and `science_operation` PTT values and their `validated` flags.
-4. Confirm focal-reference FITS paths, the 111-value F0 calibration and its `validated` flag, response matrix, focal crop and Conex absolute limits.
+4. Confirm focal-reference FITS paths, the 111-value F0 calibration and its `validated` flag, the locked `calibration_assets.bulk_response_matrix` file, focal crop and Conex absolute limits.
 5. Confirm mount axis mapping, ranges, fixed roll and Set Z.
 6. Confirm the configured DM/camera SHM names, the Suruga serial device/timeouts and the `glint_steering2` executable. There is no control-code path.
 7. Confirm output and command-log directories are writable.

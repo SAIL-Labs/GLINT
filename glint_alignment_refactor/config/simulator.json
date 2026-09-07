@@ -6,6 +6,8 @@
   "time_scale": 0.02,
   "dm_display": {"tip_tilt_full_scale_mrad": 5.0, "piston_linthresh_um": 0.02},
   "workflow": {"start_dm_state": "zero_ptt", "live_dm_refresh_s": 1.0},
+  "gui": {"brand_logo": "config/glint_ohia_logo.png"},
+  "calibration_assets": {"bulk_response_matrix": "config/response_matrix.npy"},
   "null_live": {"refresh_s": 10.0, "nframes": 25, "display_x": [200, 320]},
   "mount_control": {
     "fixed_roll": 1400.0,
@@ -104,9 +106,7 @@
       "trust_region_px": 100.0,
       "max_backtracks": 4,
       "max_condition": 10000.0,
-      "response_perturbation": [0.01, 0.01],
-      "response_matrix": "config/response_matrix.npy",
-      "initial_response_matrix": [[-243.06520251, -1752.00733876], [1867.75454865, -134.80274871]]
+      "response_perturbation": [0.01, 0.01]
     },
     "set_z": {"z": 1800.0, "validated": true},
     "pitch_yaw": {

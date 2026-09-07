@@ -30,6 +30,7 @@ class InstrumentHardware(AlignmentHardware):
         self.config = config
         self.command_logger = CommandLogger(config, self.mode)
         self._camera_lock = RLock()
+        self._dm_lock = RLock()
         self._mount_lock = RLock()
         self._mount_cache: dict[str, int] = {}
         self._conex_cache: dict[str, float] = {}
@@ -254,13 +255,15 @@ class InstrumentHardware(AlignmentHardware):
         return dict(self._limits)
 
     def get_dm(self) -> dict[int, SegmentPTT]:
-        return dm_state_from_array(self.dmptt.get_data())
+        with self._dm_lock:
+            return dm_state_from_array(self.dmptt.get_data())
 
     def set_dm(self, state: dict[int, SegmentPTT]) -> None:
         command = dm_state_to_array(state).reshape(111)
         try:
-            self.dmptt.set_data(command)
-            readback = np.asarray(self.dmptt.get_data(), dtype=float).reshape(111)
+            with self._dm_lock:
+                self.dmptt.set_data(command)
+                readback = np.asarray(self.dmptt.get_data(), dtype=float).reshape(111)
             if not np.allclose(readback, command, atol=1e-6):
                 raise RuntimeError("DM PTT SHM readback does not match the published command")
             self.command_logger.record(
@@ -276,6 +279,77 @@ class InstrumentHardware(AlignmentHardware):
                 "set_ptt",
                 command={"interface": "dmptt.set_data", "shape": [111]},
                 targets=dm_state_to_dict(state),
+                outcome="failed",
+                error=str(error),
+            )
+            raise
+
+    def set_dm_segment(
+        self,
+        segment: int,
+        piston_um: float,
+        tip_mrad: float,
+        tilt_mrad: float,
+    ) -> None:
+        """Command one HEX111 segment using the telescope-proven SHM sequence.
+
+        The working standalone null routine calls ``DM.set_segment``.  That
+        method reads the current ``dmptt`` array, changes only the requested
+        three-value row, and writes the resulting array back.  Reproducing that
+        operation here avoids issuing a nominal one-segment scan from a cached
+        111-value state and preserves changes made by the DM service between
+        commands.
+        """
+        segment = int(segment)
+        if segment not in range(37):
+            raise ValueError(f"DM segment must be in [0, 36], got {segment}")
+        target = np.asarray([piston_um, tip_mrad, tilt_mrad], dtype=float)
+        if not np.all(np.isfinite(target)):
+            raise ValueError(f"DM segment {segment} PTT command must be finite")
+
+        try:
+            with self._dm_lock:
+                current = np.asarray(self.dmptt.get_data()).reshape(37, 3).copy()
+                command = current.copy()
+                command[segment] = target.astype(command.dtype, copy=False)
+                self.dmptt.set_data(command.reshape(111))
+                readback = np.asarray(self.dmptt.get_data(), dtype=float).reshape(37, 3)
+            if not np.allclose(readback[segment], target, atol=1e-6):
+                raise RuntimeError(
+                    f"DM segment {segment} PTT SHM readback {readback[segment].tolist()} "
+                    f"does not match command {target.tolist()}"
+                )
+            self.command_logger.record(
+                "dm",
+                "set_segment_ptt",
+                command={
+                    "interface": "dmptt fresh read-modify-write",
+                    "segment": segment,
+                },
+                targets={
+                    str(segment): {
+                        "piston_um": float(target[0]),
+                        "tip_mrad": float(target[1]),
+                        "tilt_mrad": float(target[2]),
+                    }
+                },
+                readback={str(segment): readback[segment].tolist(), "matched": True},
+            )
+        except BaseException as error:
+            self.command_logger.record(
+                "dm",
+                "set_segment_ptt",
+                command={
+                    "interface": "dmptt fresh read-modify-write",
+                    "segment": segment,
+                },
+                targets={
+                    str(segment): {
+                        "piston_um": float(target[0]),
+                        "tip_mrad": float(target[1]),
+                        "tilt_mrad": float(target[2]),
+                    }
+                },
                 outcome="failed",
                 error=str(error),
             )

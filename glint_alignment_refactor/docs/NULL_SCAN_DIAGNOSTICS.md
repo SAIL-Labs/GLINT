@@ -20,11 +20,11 @@ The fitted normalized null metric is
 For each of 11–20 and 11–31, and for every repeat:
 
 1. Put the first segment at minimum piston and the second at maximum piston, retaining their current tip/tilt values.
-2. Move the first segment minimum → maximum. At every point: publish the complete DM PTT state, wait `scans.null.settle_s`, then acquire APAPANE frames.
+2. Move the first segment minimum → maximum. At every point: freshly read `dmptt`, replace only this segment's three PTT values, publish the array, verify the selected row, wait `scans.null.settle_s`, then acquire APAPANE frames.
 3. Keep the first segment at maximum and move the second from maximum-minus-one-step → minimum. The duplicate zero-OPD endpoint is omitted.
 4. Save `OPD = 2 * (piston_first - piston_second)`.
 
-This order is regression-tested. The retained legacy script acquired before issuing each labelled move, which shifted its stored samples by one command; that ordering is not reproduced.
+This order and the one-segment-change invariant are regression-tested. The SHM update deliberately matches the working standalone `shmDMcontrol.DM.set_segment` read/modify/write behavior without importing the legacy module.
 
 ## Apply safeguard
 

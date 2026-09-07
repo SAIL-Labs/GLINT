@@ -92,12 +92,6 @@ def validate_scan_defaults(config: dict[str, Any], mount_limits: dict[str, tuple
     perturbation = np.asarray(bulk.get("response_perturbation"), dtype=float)
     if perturbation.shape != (2,) or not np.all(np.isfinite(perturbation)) or np.any(perturbation == 0):
         raise ValueError("bulk.response_perturbation must contain two finite non-zero values")
-    initial_matrix = bulk.get("initial_response_matrix")
-    if initial_matrix is not None:
-        matrix = np.asarray(initial_matrix, dtype=float)
-        if matrix.shape != (2, 2) or not np.all(np.isfinite(matrix)):
-            raise ValueError("bulk.initial_response_matrix must be a finite 2 x 2 JSON matrix")
-
     grid_axes = {
         "pitch_yaw": ("pitch", "yaw"),
         "xy": ("x", "y"),
@@ -221,6 +215,33 @@ def validate_config(config: dict[str, Any]) -> list[str]:
         not isinstance(command_root, str) or not command_root.strip()
     ):
         warnings.append("command_logging.root must be a non-empty path in the active JSON configuration.")
+    config_directory = (Path(config.get("_root", PACKAGE_ROOT)) / "config").resolve()
+    response_path = config.get("calibration_assets", {}).get("bulk_response_matrix")
+    if not response_path:
+        warnings.append("calibration_assets.bulk_response_matrix is missing; bulk alignment is unavailable.")
+    else:
+        resolved_response = Path(str(response_path)).expanduser()
+        if not resolved_response.is_absolute():
+            resolved_response = Path(config.get("_root", PACKAGE_ROOT)) / resolved_response
+        resolved_response = resolved_response.resolve()
+        try:
+            resolved_response.relative_to(config_directory)
+        except ValueError:
+            warnings.append(
+                f"The bulk response matrix must be stored inside the configuration folder: {config_directory}"
+            )
+        else:
+            if not resolved_response.is_file():
+                warnings.append(f"The configured bulk response matrix does not exist: {resolved_response}")
+    logo_path = config.get("gui", {}).get("brand_logo")
+    if not logo_path:
+        warnings.append("gui.brand_logo is missing; the GLINT GUI cannot display its configured logo.")
+    else:
+        resolved_logo = Path(str(logo_path)).expanduser()
+        if not resolved_logo.is_absolute():
+            resolved_logo = Path(config.get("_root", PACKAGE_ROOT)) / resolved_logo
+        if not resolved_logo.is_file():
+            warnings.append(f"The configured GUI logo does not exist: {resolved_logo}")
     away = config["dm_states"]["tilted_away"]
     if not away.get("validated", False):
         warnings.append("Tilted-away DM values are marked unvalidated; verify all 37 segment values on the instrument.")

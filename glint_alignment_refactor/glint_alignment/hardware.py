@@ -46,6 +46,26 @@ class AlignmentHardware(ABC):
     @abstractmethod
     def set_dm(self, state: dict[int, SegmentPTT]) -> None: ...
 
+    def set_dm_segment(
+        self,
+        segment: int,
+        piston_um: float,
+        tip_mrad: float,
+        tilt_mrad: float,
+    ) -> None:
+        """Update one segment while preserving the latest state of every other segment.
+
+        Simulation and simple backends can use this generic implementation.  The
+        instrument backend overrides it with the telescope's proven fresh-SHM
+        read/modify/write sequence used by ``shmDMcontrol.DM.set_segment``.
+        """
+        segment = int(segment)
+        if segment not in range(37):
+            raise ValueError(f"DM segment must be in [0, 36], got {segment}")
+        state = self.get_dm()
+        state[segment] = SegmentPTT(float(piston_um), float(tip_mrad), float(tilt_mrad))
+        self.set_dm(state)
+
     @abstractmethod
     def zero_dm_volts(self) -> None: ...
 

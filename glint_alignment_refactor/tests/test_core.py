@@ -23,6 +23,7 @@ from glint_alignment.gui import (
     AlignmentGUI,
     GREEN,
     LABELS,
+    LOCKED_WORKFLOW_SETTING_PATHS,
     assign_default_setting,
     dm_piston_mapping,
     dm_segment_rgba,
@@ -76,6 +77,12 @@ class TestCore(unittest.TestCase):
         assign_default_setting(nested, ("axis", "start"), 3.0)
         self.assertEqual(nested["axis"]["start"], 3.0)
         self.assertNotIn("e", format_piston_tick(0.00002).lower())
+        response_path = Path(self.config["_root"]) / self.config["calibration_assets"]["bulk_response_matrix"]
+        logo_path = Path(self.config["_root"]) / self.config["gui"]["brand_logo"]
+        self.assertTrue(response_path.is_file())
+        self.assertTrue(logo_path.is_file())
+        self.assertNotIn("response_matrix", self.config["scans"]["bulk"])
+        self.assertNotIn("initial_response_matrix", self.config["scans"]["bulk"])
         self.assertEqual(resolve_camera_directory("", self.config), Path(self.config["_root"]) / "simulated_camera_frames")
         without_camera_path = dict(self.config)
         without_camera_path.pop("camera_frame_root")
@@ -126,15 +133,14 @@ class TestCore(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["scans"]["focal_dark"]["nframes"], 12)
             gui.select_scan.assert_called_once_with("focal_dark")
 
-    def test_workflow_defaults_reject_path_changes_that_bypass_manual_json_editing(self):
+    def test_workflow_defaults_do_not_expose_or_accept_response_matrices(self):
         gui = AlignmentGUI.__new__(AlignmentGUI)
         gui.config = self.config
         gui.hardware = self.hardware
         gui.engine = self.engine
-        original = self.config["scans"]["bulk"]["response_matrix"]
         variable = Mock()
         variable.get.return_value = "outside_config.npy"
-        gui.workflow_default_fields = {"bulk": {("response_matrix",): (variable, original)}}
+        gui.workflow_default_fields = {"bulk": {("response_matrix",): (variable, "config/response_matrix.npy")}}
         gui.current_kind = "bulk"
         gui.status = Mock()
         gui._append_log = Mock()
@@ -142,8 +148,12 @@ class TestCore(unittest.TestCase):
         with patch.object(gui_module.messagebox, "showerror") as error:
             gui._update_workflow_defaults()
         error.assert_called_once()
-        self.assertIn("manually", error.call_args.args[1])
-        self.assertEqual(self.config["scans"]["bulk"]["response_matrix"], original)
+        self.assertIn("locked", error.call_args.args[1])
+        self.assertEqual(
+            LOCKED_WORKFLOW_SETTING_PATHS["bulk"],
+            {("response_matrix",), ("initial_response_matrix",)},
+        )
+        self.assertNotIn("response_matrix", self.config["scans"]["bulk"])
 
     def test_bulk_converges_and_restores_until_apply(self):
         initial = self.hardware.get_conex()
@@ -225,7 +235,20 @@ class TestCore(unittest.TestCase):
         self.assertEqual(first_tt_state[31], away[31])
 
         commanded.clear()
-        self.engine.null_scan(
+        segment_commands = []
+        original_set_dm_segment = self.hardware.set_dm_segment
+
+        def record_segment(segment, piston, tip, tilt):
+            original_set_dm_segment(segment, piston, tip, tilt)
+            segment_commands.append(
+                {
+                    "moved": int(segment),
+                    "state": self.hardware.get_dm(),
+                }
+            )
+
+        self.hardware.set_dm_segment = record_segment
+        null_result = self.engine.null_scan(
             {
                 **self.config["scans"]["null"],
                 "piston": {"start": -1.3, "span": 2.6, "step": 0.65},
@@ -233,20 +256,28 @@ class TestCore(unittest.TestCase):
                 "numavg": 1,
             }
         )
-        first_null_state = commanded[0]
-        self.assertAlmostEqual(first_null_state[11].piston_um, -1.3)
-        self.assertAlmostEqual(first_null_state[20].piston_um, 1.3)
-        self.assertEqual(first_null_state[31], away[31])
-        # Each 5-point ascending leg is followed by the other segment's
-        # 4-point descending leg; the zero-OPD endpoint is not duplicated.
-        self.assertEqual(len(commanded), 19)  # 18 scan points plus guarded pre-scan restore
-        self.assertAlmostEqual(commanded[4][11].piston_um, 1.3)
-        self.assertAlmostEqual(commanded[4][20].piston_um, 1.3)
-        self.assertAlmostEqual(commanded[5][11].piston_um, 1.3)
-        self.assertAlmostEqual(commanded[5][20].piston_um, 0.65)
-        self.assertAlmostEqual(commanded[8][20].piston_um, -1.3)
-        self.assertAlmostEqual(commanded[9][11].piston_um, -1.3)
-        self.assertAlmostEqual(commanded[9][31].piston_um, 1.3)
+        # Baseline 11-20 starts by placing 20 at MAX, then 11 at MIN.
+        self.assertEqual([entry["moved"] for entry in segment_commands[:2]], [20, 11])
+        self.assertAlmostEqual(segment_commands[0]["state"][20].piston_um, 1.3)
+        self.assertAlmostEqual(segment_commands[1]["state"][11].piston_um, -1.3)
+        for key in ("11-20", "11-31"):
+            estimate = null_result.estimates[key]
+            first = np.asarray(estimate["piston_first_um"])
+            second = np.asarray(estimate["piston_second_um"])
+            self.assertAlmostEqual(first[0], -1.3)
+            self.assertAlmostEqual(second[0], 1.3)
+            turning = int(np.flatnonzero(np.isclose(first - second, 0.0))[0])
+            self.assertAlmostEqual(first[turning], 1.3)
+            self.assertAlmostEqual(second[turning], 1.3)
+            self.assertAlmostEqual(first[-1], 1.3)
+            self.assertAlmostEqual(second[-1], -1.3)
+            changed = ~np.isclose(np.diff(np.column_stack((first, second)), axis=0), 0.0)
+            self.assertTrue(np.all(np.sum(changed, axis=1) == 1))
+            # Both halves carry a varying simulated null signal; this guards the
+            # telescope symptom where the positive-OPD leg became flat.
+            mean_flux = np.asarray(estimate["mean_metric"])
+            self.assertGreater(float(np.ptp(mean_flux[: turning + 1])), 1.0)
+            self.assertGreater(float(np.ptp(mean_flux[turning:])), 1.0)
 
     def test_apply_commands_and_retains_the_complete_stage_dm_state(self):
         zero = segment_state(self.config, "zero_ptt")
@@ -622,6 +653,18 @@ class TestCore(unittest.TestCase):
                 },
             )
             hardware.set_dm(segment_state(instrument_config, "zero_ptt"))
+            # Segment-level writes must start from a fresh SHM read, exactly as
+            # the telescope-proven shmDMcontrol.DM.set_segment routine does.
+            reshaped = shm_arrays["dmptt"].reshape(37, 3)
+            reshaped[5] = [0.21, -0.32, 0.43]
+            hardware.set_dm_segment(20, -0.75, 0.14, -0.49)
+            segment_state_readback = hardware.get_dm()
+            self.assertAlmostEqual(segment_state_readback[20].piston_um, -0.75)
+            self.assertAlmostEqual(segment_state_readback[20].tip_mrad, 0.14)
+            self.assertAlmostEqual(segment_state_readback[20].tilt_mrad, -0.49)
+            self.assertAlmostEqual(segment_state_readback[5].piston_um, 0.21)
+            self.assertAlmostEqual(segment_state_readback[5].tip_mrad, -0.32)
+            self.assertAlmostEqual(segment_state_readback[5].tilt_mrad, 0.43)
             np.testing.assert_allclose(hardware.get_dm_volts(), 0.25)
             hardware.zero_dm_volts()
             np.testing.assert_allclose(hardware.get_dm_volts(), 0.0)
@@ -877,39 +920,22 @@ class TestCore(unittest.TestCase):
         self.assertLess(fit["r2"], 0.35)
         self.assertIn("Poor sinc", fit["fit_warning"])
 
-    def test_null_scan_refuses_solution_when_either_baseline_fit_fails(self):
+    def test_null_scan_uses_minima_from_the_averaged_measured_curves(self):
         self.engine.acquire_dark("apapane", 1)
-        good = {
-            "model": "sinc × sine",
-            "fit_ok": True,
-            "fit_warning": "",
-            "r2": 0.9,
-            "fit_opd": np.asarray([-0.4, 0.0, 0.4]),
-            "fit_metric": np.asarray([0.2, 0.1, 0.2]),
-            "candidates": [{"opd_um": 0.0, "delta_piston_um": 0.0, "metric": 0.1}],
-            "best": {"opd_um": 0.0, "delta_piston_um": 0.0, "metric": 0.1},
-        }
-        bad = {
-            **good,
-            "fit_ok": False,
-            "fit_warning": "no coherent packet",
-            "r2": 0.02,
-            "candidates": [],
-            "best": None,
-        }
         parameters = {
             **self.config["scans"]["null"],
-            "piston": {"start": -0.1, "span": 0.2, "step": 0.1},
+            "piston": {"start": -1.3, "span": 2.6, "step": 0.1},
             "nframes": 1,
             "numavg": 1,
         }
-        with patch("glint_alignment.engine.fit_null_envelope", side_effect=[good, bad]):
-            result = self.engine.null_scan(parameters)
-        self.assertFalse(result.recommendation["passed"])
-        self.assertFalse(result.recommendation["feasible"])
-        self.assertIn("11-31", result.recommendation["reason"])
-        self.assertIn("flux_diagnostics", result.estimates["11-20"])
-        self.assertIn("11-20__denominator", result.maps)
+        result = self.engine.null_scan(parameters)
+        for baseline in ("11-20", "11-31"):
+            estimate = result.estimates[baseline]
+            self.assertEqual(estimate["model"], "measured raw-flux minimum")
+            self.assertEqual(
+                estimate["best"]["sample_index"],
+                int(np.argmin(estimate["mean_metric"])),
+            )
         json.dumps(result.json_summary(), allow_nan=False)
 
     def test_individual_dm_apply_and_advanced_mount_jog(self):
@@ -942,7 +968,15 @@ class TestCore(unittest.TestCase):
         processed = process_apapane_frame(np.stack([image + 5.0, image + 5.0]), np.full_like(image, 5.0))
         statistics = collect_null_statistics(processed)
         for name in NULL_BOXES:
-            self.assertAlmostEqual(statistics[name]["null_depth"], 1.0)
+            null_box = NULL_BOXES[name]
+            ft1_box = FRINGE_TRACKING_BOXES[name]["FT1"]
+            ft2_box = FRINGE_TRACKING_BOXES[name]["FT2"]
+            null_pixels = (null_box[1] - null_box[0]) * (null_box[3] - null_box[2])
+            ft_pixels = (
+                (ft1_box[1] - ft1_box[0]) * (ft1_box[3] - ft1_box[2])
+                + (ft2_box[1] - ft2_box[0]) * (ft2_box[3] - ft2_box[2])
+            )
+            self.assertAlmostEqual(statistics[name]["null_depth"], 2.0 * null_pixels / ft_pixels)
 
     def test_null_live_uses_compact_tables_instead_of_three_cards(self):
         image = np.ones((280, 320), dtype=float)
@@ -953,13 +987,13 @@ class TestCore(unittest.TestCase):
         gui.null_live_canvas = FigureCanvasAgg(gui.null_live_figure)
         gui._draw_null_live(image, statistics, 25)
         gui.null_live_canvas.draw()
-        self.assertEqual(len(gui.null_live_figure.axes), 2)
+        self.assertEqual(len(gui.null_live_figure.axes), 3)
         image_position = gui.null_live_figure.axes[0].get_position()
-        stats_position = gui.null_live_figure.axes[1].get_position()
+        stats_position = gui.null_live_figure.axes[2].get_position()
         self.assertGreater(image_position.width, stats_position.width)
-        self.assertGreaterEqual(image_position.x0, 0.08)
+        self.assertGreaterEqual(image_position.x0, 0.07)
         self.assertGreaterEqual(image_position.y0, 0.12)
-        stats_axis = gui.null_live_figure.axes[1]
+        stats_axis = gui.null_live_figure.axes[2]
         self.assertEqual(len(stats_axis.tables), 2)
         null_table = stats_axis.tables[1]
         rendered = {cell.get_text().get_text() for cell in null_table.get_celld().values()}

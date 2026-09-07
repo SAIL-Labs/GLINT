@@ -15,6 +15,12 @@
     "start_dm_state": "zero_ptt",
     "live_dm_refresh_s": 1.0
   },
+  "gui": {
+    "brand_logo": "config/glint_ohia_logo.png"
+  },
+  "calibration_assets": {
+    "bulk_response_matrix": "config/response_matrix.npy"
+  },
   "null_live": {
     "refresh_s": 10.0,
     "nframes": 25,
@@ -235,17 +241,6 @@
       "response_perturbation": [
         0.01,
         0.01
-      ],
-      "response_matrix": "config/response_matrix.npy",
-      "initial_response_matrix": [
-        [
-          -243.06520251,
-          -1752.00733876
-        ],
-        [
-          1867.75454865,
-          -134.80274871
-        ]
       ]
     },
     "set_z": {
@@ -255,12 +250,12 @@
     },
     "pitch_yaw": {
       "pitch": {
-        "start": 300.0,
-        "span": 500.0,
+        "start": 350.0,
+        "span": 450.0,
         "step": 50.0
       },
       "yaw": {
-        "start": -100.0,
+        "start": 0.0,
         "span": 500.0,
         "step": 50.0
       },

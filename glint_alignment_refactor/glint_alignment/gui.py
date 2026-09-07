@@ -6,6 +6,7 @@ import threading
 import time
 import traceback
 from copy import deepcopy
+from pathlib import Path
 
 import matplotlib.patheffects as path_effects
 import numpy as np
@@ -44,7 +45,9 @@ GREEN = "#39ff88"
 ORANGE = "#ff9f1c"
 RED = "#ff4d6d"
 GRID = "#48514c"
-ALIEN_X_SHIFT = -10
+LOCKED_WORKFLOW_SETTING_PATHS = {
+    "bulk": {("response_matrix",), ("initial_response_matrix",)},
+}
 WAVELENGTH_CMAP = LinearSegmentedColormap.from_list(
     "black_safe_wavelength",
     [
@@ -272,6 +275,7 @@ class AlignmentGUI:
         self.advanced_minus_button = None
         self.advanced_plus_button = None
         self.retro_font = self._choose_retro_font()
+        self.brand_logo_image = None
         self._configure_window()
         self._build_layout()
         self.select_scan("focal_dark")
@@ -578,52 +582,28 @@ class AlignmentGUI:
         right = ttk.Frame(outer, padding=(12, 0, 0, 0), width=310)
         right.grid(row=0, column=2, rowspan=2, sticky="nsew")
         right.grid_propagate(False)
-        brand = tk.Frame(right, bg=GREEN, height=64)
+        brand = tk.Frame(right, bg=BG, height=64)
         brand.pack(side="bottom", fill="x", pady=(12, 0))
         brand.pack_propagate(False)
+        configured_logo = self.config.get("gui", {}).get("brand_logo", "config/glint_ohia_logo.png")
+        logo_path = Path(str(configured_logo)).expanduser()
+        if not logo_path.is_absolute():
+            logo_path = Path(self.config["_root"]) / logo_path
+        if not logo_path.is_file():
+            raise RuntimeError(f"Configured GUI logo does not exist: {logo_path}")
+        source_logo = tk.PhotoImage(file=str(logo_path))
+        # Tk can display PNG files without adding Pillow as an instrument
+        # dependency. Preserve the source aspect ratio and fit inside the fixed
+        # 310 x 64 footer using one integer subsampling factor.
+        subsample = max(1, int(np.ceil(max(source_logo.width() / 286.0, source_logo.height() / 63.0))))
+        self.brand_logo_image = source_logo.subsample(subsample, subsample)
         tk.Label(
             brand,
-            text="GLINT\nALIGNMENT",
-            bg=GREEN,
-            fg=BG,
-            justify="left",
-            anchor="w",
-            font=(self.retro_font, 12, "bold"),
-            padx=14,
-            pady=5,
-        ).pack(side="left", fill="both", expand=True)
-        alien = tk.Canvas(
-            brand,
-            # Extra canvas width is added on the right-anchored widget's left
-            # side, moving the face away from the footer boundary and leaving
-            # a safer clipping margin on the right.
-            width=72,
-            height=58,
-            bg=GREEN,
-            highlightthickness=0,
+            image=self.brand_logo_image,
+            bg=BG,
             borderwidth=0,
-        )
-        alien.pack(side="right", padx=(4, 10), pady=3)
-        alien.create_polygon(
-            31, 3,
-            44, 7,
-            52, 17,
-            50, 30,
-            43, 43,
-            31, 54,
-            19, 43,
-            12, 30,
-            10, 17,
-            18, 7,
-            fill=BG,
-            outline=BG,
-            smooth=True,
-            splinesteps=24,
-        )
-        alien.create_polygon(18, 20, 29, 24, 25, 34, 17, 29, fill=GREEN, outline=GREEN, smooth=True)
-        alien.create_polygon(44, 20, 33, 24, 37, 34, 45, 29, fill=GREEN, outline=GREEN, smooth=True)
-        alien.create_arc(25, 36, 37, 45, start=200, extent=140, style="arc", outline=GREEN, width=2)
-        alien.move("all", ALIEN_X_SHIFT, 0)
+            highlightthickness=0,
+        ).pack(fill="both", expand=True)
         right_content = ttk.Frame(right)
         right_content.pack(side="top", fill="both", expand=True)
         ttk.Label(right_content, text="SCAN SETTINGS", style="Header.TLabel").pack(anchor="w")
@@ -766,7 +746,8 @@ class AlignmentGUI:
             body,
             text=(
                 "Select a workflow step, edit its complete default configuration, then press UPDATE DEFAULTS. "
-                "Path fields are read-only here and must be changed manually in the JSON. "
+                "The bulk response-matrix path and fallback matrix are fixed configuration assets and are "
+                "intentionally not displayed or editable here. "
                 f"Changes are used immediately and saved for future launches in:\n{config_path}"
             ),
             style="Muted.TLabel",
@@ -805,20 +786,17 @@ class AlignmentGUI:
             )
             fields = {}
             for row_index, (path, value) in enumerate(flatten_default_settings(self.config["scans"][kind]), start=1):
+                if path in LOCKED_WORKFLOW_SETTING_PATHS.get(kind, set()):
+                    continue
                 label_text = "  /  ".join(part.replace("_", " ").title() for part in path)
-                manual_path = path[-1] in {"response_matrix"}
                 if isinstance(value, list):
                     label_text += "  [JSON list]"
                 elif isinstance(value, bool):
                     label_text += "  [true / false]"
-                if manual_path:
-                    label_text += "  [manual JSON only]"
                 ttk.Label(frame, text=label_text).grid(row=row_index, column=0, sticky="w", padx=(0, 14), pady=4)
                 variable = tk.StringVar(value=format_default_setting(value))
                 entry = ttk.Entry(frame, textvariable=variable, width=42)
                 entry.grid(row=row_index, column=1, sticky="ew", pady=4)
-                if manual_path:
-                    entry.configure(state="disabled")
                 fields[path] = (variable, deepcopy(value))
             self.workflow_default_fields[kind] = fields
             self.workflow_default_frames[kind] = frame
@@ -852,9 +830,9 @@ class AlignmentGUI:
         try:
             for kind, fields in self.workflow_default_fields.items():
                 for path, (variable, original) in fields.items():
-                    if path[-1] in {"response_matrix"} and variable.get() != format_default_setting(original):
+                    if path in LOCKED_WORKFLOW_SETTING_PATHS.get(kind, set()):
                         raise ValueError(
-                            f"{kind}.{'/'.join(path)} is a path and must be changed manually in the active JSON"
+                            f"{kind}.{'/'.join(path)} is locked to the packaged configuration and is not editable"
                         )
                     try:
                         value = parse_default_setting(variable.get(), original)

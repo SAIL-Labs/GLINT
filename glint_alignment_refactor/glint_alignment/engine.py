@@ -223,9 +223,12 @@ class AlignmentEngine:
         values = np.asarray([piston_um, tip_mrad, tilt_mrad], dtype=float)
         if not np.all(np.isfinite(values)):
             raise ValueError("Piston, tip, and tilt must be finite numbers")
-        state = self.hardware.get_dm()
-        state[segment] = SegmentPTT(float(piston_um), float(tip_mrad), float(tilt_mrad))
-        self.hardware.set_dm(state)
+        self.hardware.set_dm_segment(
+            segment,
+            float(piston_um),
+            float(tip_mrad),
+            float(tilt_mrad),
+        )
         self._settle()
 
     def jog_mount(self, axis: str, step: float) -> dict[str, float]:
@@ -380,7 +383,7 @@ class AlignmentEngine:
             goal = hotspot(reference_bright - reference_dark, bulk["crop"], bulk["centroid_threshold"])
             current = self.hardware.get_conex()
             theta = np.asarray([current["u"], current["v"]], dtype=float)
-            response = self._load_response_matrix(bulk)
+            response = self._load_response_matrix()
             history: list[dict] = []
             stalled = 0
             for iteration in range(int(bulk["max_iterations"]) + 1):
@@ -450,18 +453,33 @@ class AlignmentEngine:
 
         return self._guarded(operation, keep_dm_volts_on_success=True)
 
-    def _load_response_matrix(self, bulk: dict) -> np.ndarray | None:
-        path = bulk.get("response_matrix")
-        if path:
-            path = Path(path)
-            if not path.is_absolute():
-                path = Path(self.config["_root"]) / path
-            if path.exists():
-                matrix = np.asarray(np.load(path), dtype=float)
-                if matrix.shape == (2, 2):
-                    return matrix
-        initial = bulk.get("initial_response_matrix")
-        return None if initial is None else np.asarray(initial, dtype=float)
+    def _load_response_matrix(self) -> np.ndarray:
+        """Load the single packaged bulk-alignment response matrix.
+
+        The workflow-default editor must not select, replace, or synthesize this
+        calibration.  Its path therefore lives outside ``scans.bulk`` and must
+        resolve to a file inside the package's ``config`` directory.
+        """
+        configured = self.config.get("calibration_assets", {}).get("bulk_response_matrix")
+        if not configured:
+            raise RuntimeError("calibration_assets.bulk_response_matrix is not configured")
+        path = Path(str(configured)).expanduser()
+        if not path.is_absolute():
+            path = Path(self.config["_root"]) / path
+        path = path.resolve()
+        config_directory = (Path(self.config["_root"]) / "config").resolve()
+        try:
+            path.relative_to(config_directory)
+        except ValueError as error:
+            raise RuntimeError(
+                f"Bulk response matrix must be stored inside {config_directory}; got {path}"
+            ) from error
+        if not path.is_file():
+            raise RuntimeError(f"Configured bulk response matrix does not exist: {path}")
+        matrix = np.asarray(np.load(path, allow_pickle=False), dtype=float)
+        if matrix.shape != (2, 2) or not np.all(np.isfinite(matrix)):
+            raise RuntimeError(f"Bulk response matrix must be a finite 2 x 2 array: {path}")
+        return matrix
 
     def _symmetric_response(self, theta: np.ndarray, bulk: dict) -> np.ndarray:
         response = np.zeros((2, 2), dtype=float)
@@ -644,28 +662,44 @@ class AlignmentEngine:
             minimum = float(params["piston"]["start"])
             maximum = minimum + float(params["piston"]["span"])
             piston_step = float(params["piston"]["step"])
-            differential_positions = AxisGrid(
-                start=minimum - maximum,
-                span=2.0 * (maximum - minimum),
+            single_segment_positions = AxisGrid(
+                start=minimum,
+                span=maximum - minimum,
                 step=piston_step,
             ).values()
 
-            # The one-segment-at-a-time trajectory changes which segment moves at
-            # differential piston zero.  Make that turning point an explicit
-            # sample even if a future configuration does not land on it exactly.
-            zero_tolerance = 1e-12 * max(1.0, abs(maximum - minimum))
-            zero_hits = np.flatnonzero(np.isclose(differential_positions, 0.0, atol=zero_tolerance, rtol=0.0))
-            if len(zero_hits):
-                differential_positions[int(zero_hits[0])] = 0.0
-            else:
-                differential_positions = np.sort(np.append(differential_positions, 0.0))
+            # Construct the hardware path directly from the two physical legs:
+            #   1. A rises MIN -> MAX while B remains at MAX;
+            #   2. B falls MAX-step -> MIN while A remains at MAX.
+            # MAX/MAX is measured once at the turning point.  This formulation is
+            # deliberately explicit rather than deriving both commands from a
+            # differential coordinate, so a later edit cannot reintroduce a
+            # simultaneous cross-sweep.
+            piston_pairs = np.concatenate(
+                (
+                    np.column_stack(
+                        (
+                            single_segment_positions,
+                            np.full(len(single_segment_positions), maximum, dtype=float),
+                        )
+                    ),
+                    np.column_stack(
+                        (
+                            np.full(len(single_segment_positions) - 1, maximum, dtype=float),
+                            single_segment_positions[-2::-1],
+                        )
+                    ),
+                ),
+                axis=0,
+            )
+            differential_positions = piston_pairs[:, 0] - piston_pairs[:, 1]
 
             # Scan one physical baseline at a time.  For every measured step only
             # ONE of the two baseline pistons is allowed to change:
             #   leg 1: A moves minimum -> maximum while B stays at maximum;
             #   leg 2: A stays at maximum while B moves maximum -> minimum.
             # The third injected segment remains fixed at its zero-PTT reference.
-            baselines = [(11, 31), (11, 20)]
+            baselines = [(11, 20), (11, 31)]
             maps: dict[str, np.ndarray] = {}
             estimates: dict[str, dict] = {}
             total = len(baselines) * int(params["numavg"]) * len(differential_positions)
@@ -698,18 +732,24 @@ class AlignmentEngine:
             def command_one_piston(segment: int, target_um: float) -> bool:
                 """Change exactly one injected piston in one DM command.
 
-                The hardware interface receives a full DM state, but every other
-                state entry is kept identical to the last commanded state.  Thus
-                only ``segment`` has a changed piston target in this command.
-                Returns True when a physical piston change was commanded.
+                The instrument interface performs the same fresh SHM
+                read/modify/write used by the working standalone
+                ``shmDMcontrol.DM.set_segment`` routine.  Returns True when a
+                physical piston change was commanded.
                 """
                 nonlocal state
                 target = float(target_um)
                 current_piston = float(state[segment].piston_um)
                 if np.isclose(current_piston, target, atol=1e-12, rtol=0.0):
                     return False
+                ptt = state[segment]
+                self.hardware.set_dm_segment(
+                    segment,
+                    target,
+                    float(ptt.tip_mrad),
+                    float(ptt.tilt_mrad),
+                )
                 state[segment].piston_um = target
-                self.hardware.set_dm(state)
                 self._settle(settle_s)
                 return True
 
@@ -731,20 +771,6 @@ class AlignmentEngine:
 
                     if simulator_selector is not None:
                         simulator_selector(baseline)
-
-                    piston_pairs = np.asarray(
-                        [
-                            self._pair_pistons_for_differential(
-                                float(differential),
-                                minimum,
-                                maximum,
-                                float(reference[a].piston_um),
-                                float(reference[b].piston_um),
-                            )
-                            for differential in differential_positions
-                        ],
-                        dtype=float,
-                    )
 
                     # Hard trajectory checks.  These make a regression to the old
                     # simultaneous cross-sweep fail immediately instead of silently
@@ -895,6 +921,7 @@ class AlignmentEngine:
                         "fixed_segment": fixed_segment,
                         "fixed_piston_um": float(base_state[fixed_segment].piston_um),
                         "motion_rule": "one injected baseline segment changes per measured step",
+                        "dm_command_interface": "fresh dmptt read-modify-write for one segment",
                     }
             finally:
                 if simulator_selector is not None:
@@ -926,6 +953,7 @@ class AlignmentEngine:
                         "then first stays at max while second moves max-to-min; third injected segment fixed"
                     ),
                     "motion_invariant": "at most one injected baseline piston changes between measured samples",
+                    "dm_command_interface": "fresh dmptt read-modify-write for one segment",
                     "opd_definition": "2 * (piston_first - piston_second)",
                     "measurement_definition": "dark-subtracted integrated raw null-channel flux",
                     "injected_dm_state": (

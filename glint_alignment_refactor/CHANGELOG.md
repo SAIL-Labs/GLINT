@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.9
+
+- Removed both the response-matrix path and fallback response-matrix values from the Workflow defaults editor. Bulk alignment now loads the single validated `config/response_matrix.npy` asset through `calibration_assets.bulk_response_matrix`, and rejects a missing, malformed, or out-of-config-folder file.
+- Rebuilt the null hardware path as two explicit physical legs for each baseline: segment A rises from minimum to maximum while B remains at maximum, then B falls from maximum-minus-one-step to minimum while A remains at maximum. Only one segment changes between measured samples.
+- Added an instrument-native `set_dm_segment` operation that duplicates the working standalone routine's fresh `dmptt` read/modify/write sequence without importing legacy control modules. This replaces cached full-state writes for null-scan piston increments and records each selected-segment command in the persistent DM log.
+- Replaced the generated `GLINT ALIGNMENT`/alien footer with the packaged `config/glint_ohia_logo.png` image in instrument and simulator modes.
+- Added regression coverage for both null-scan legs, one-segment motion, fresh-SHM preservation of unrelated segments, locked calibration assets, and configured logo availability.
+
 ## 0.4.8
 
 - Replaced the Gaussian null-packet model with a bounded sinc coherence envelope multiplied by a sinusoid. The default physical OPD fringe-period interval is 1.2–2.0 µm and remains editable in the active configuration.

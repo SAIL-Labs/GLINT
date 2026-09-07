@@ -61,8 +61,8 @@ import glint_paths
 #   OUTPUT_ROOT / YEAR / DATE / scanITERATION /
 OUTPUT_ROOT = str(glint_paths.data_dir('alignment_scans', 'nullscans'))
 YEAR = 2026
-DATE = "09-05"          # e.g. "05-28"
-ITERATION = 2
+DATE = "09-07"          # e.g. "05-28"
+ITERATION = 1
 
 # Camera / dark settings.
 APAPANE_SHM_NAME = "apapane"

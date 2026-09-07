@@ -1,4 +1,4 @@
-# GLINT Alignment v0.4.8 — Telescope Installation Checklist
+# GLINT Alignment v0.4.9 — Telescope Installation Checklist
 
 Use this checklist before the first telescope alignment. Items marked **motion** or **DM command** change hardware state and should be performed only in an approved engineering window.
 
