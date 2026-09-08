@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "scan_kind": "dm_wide_tiptilt",
+  "description": "Hold one injected segment at its live aligned PTT and raster every other DM segment together.",
+  "grid": {
+    "tip": {
+      "start": -4.0,
+      "stop": 4.0,
+      "step": 0.2
+    },
+    "tilt": {
+      "start": -4.0,
+      "stop": 4.0,
+      "step": 0.2
+    }
+  },
+  "nframes": 10,
+  "repeats": 1,
+  "dm_settle_s": 0.001,
+  "initial_settle_s": 0.01,
+  "serpentine": true,
+  "rastered_segments": {
+    "piston_um": 0.0
+  },
+  "saved_boxes": {
+    "photometry": [
+      "Phot 1",
+      "Phot 2",
+      "Phot 3"
+    ],
+    "null": [],
+    "fringe_tracking": {}
+  },
+  "output_subdirectory": "standalone_tiptilt_maps/dm_wide",
+  "minimum_free_space_gb": 2.0
+}

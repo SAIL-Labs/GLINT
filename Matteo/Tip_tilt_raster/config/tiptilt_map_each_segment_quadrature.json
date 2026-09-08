@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "scan_kind": "each_segment_tiptilt_quadrature",
+  "description": "Raster each DM segment individually and interleave four phase-quadrature piston values at every tip/tilt coordinate.",
+  "central_wavelength_nm": 1500.0,
+  "grid": {
+    "tip": {
+      "start": -4.0,
+      "stop": 4.0,
+      "step": 0.2
+    },
+    "tilt": {
+      "start": -4.0,
+      "stop": 4.0,
+      "step": 0.2
+    }
+  },
+  "nframes": 10,
+  "repeats": 1,
+  "dm_settle_s": 0.001,
+  "initial_settle_s": 0.01,
+  "serpentine": true,
+  "rest_of_dm": {
+    "piston_um": 0.0,
+    "tip_mrad": 0.0,
+    "tilt_mrad": 5.0
+  },
+  "saved_boxes": {
+    "photometry": [
+      "Phot 1",
+      "Phot 2",
+      "Phot 3"
+    ],
+    "null": [],
+    "fringe_tracking": {}
+  },
+  "output_subdirectory": "standalone_tiptilt_maps/each_segment_quadrature",
+  "minimum_free_space_gb": 2.0
+}

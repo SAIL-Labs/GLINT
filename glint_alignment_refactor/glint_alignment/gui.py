@@ -306,28 +306,28 @@ class AlignmentGUI:
             style.theme_use("clam")
         except tk.TclError:
             pass
-        base_font = (self.retro_font, 9)
+        # The GUI is normally operated on the 2560 x 1440 SCExAO desktop.  Use
+        # the available vertical space in the control columns instead of
+        # compressing their text and click targets into the top of the window.
+        base_font = (self.retro_font, 10)
         style.configure("TFrame", background=BG)
         style.configure("TLabel", background=BG, foreground=FG, font=base_font)
-        style.configure("Header.TLabel", font=(self.retro_font, 14, "bold"), foreground=GREEN)
-        style.configure("Muted.TLabel", foreground=MUTED, font=(self.retro_font, 8))
-        style.configure("TButton", padding=7, font=base_font, background="#161616", foreground=FG)
+        style.configure("Header.TLabel", font=(self.retro_font, 16, "bold"), foreground=GREEN)
+        style.configure("Muted.TLabel", foreground=MUTED, font=(self.retro_font, 9))
+        style.configure("TButton", padding=(8, 9), font=base_font, background="#161616", foreground=FG)
         style.map("TButton", background=[("active", "#242424")], foreground=[("disabled", "#606660")])
-        # Six pixels of vertical padding makes each workflow cell about 20%
-        # shorter than the previous nine-pixel layout without reducing its
-        # horizontal click target.
-        style.configure("Step.TButton", anchor="w", padding=(9, 6))
+        style.configure("Step.TButton", anchor="w", padding=(11, 9))
         style.configure("Done.Step.TButton", foreground=GREEN)
         style.configure("Review.Step.TButton", foreground=GREEN)
         style.configure("Iterating.Step.TButton", foreground=ORANGE)
         style.map("Done.Step.TButton", foreground=[("disabled", GREEN), ("!disabled", GREEN)])
         style.map("Review.Step.TButton", foreground=[("disabled", GREEN), ("!disabled", GREEN)])
         style.map("Iterating.Step.TButton", foreground=[("disabled", ORANGE), ("!disabled", ORANGE)])
-        style.configure("Accent.TButton", font=(self.retro_font, 9, "bold"), foreground=GREEN)
+        style.configure("Accent.TButton", font=(self.retro_font, 10, "bold"), foreground=GREEN)
         style.configure(
             "Run.TButton",
-            padding=7,
-            font=(self.retro_font, 9, "bold"),
+            padding=(8, 9),
+            font=(self.retro_font, 10, "bold"),
             foreground=BG,
             background=GREEN,
         )
@@ -337,10 +337,10 @@ class AlignmentGUI:
             background=[("disabled", "#174f30"), ("pressed", "#20d96e"), ("active", "#61ffa0")],
         )
         style.configure("TNotebook", background=BG, borderwidth=0)
-        style.configure("TNotebook.Tab", padding=(12, 7), font=base_font, background="#111111", foreground=FG)
+        style.configure("TNotebook.Tab", padding=(14, 9), font=base_font, background="#111111", foreground=FG)
         style.map("TNotebook.Tab", background=[("selected", "#202020")], foreground=[("selected", GREEN)])
         style.configure("TEntry", fieldbackground="#101010", foreground=GREEN, insertcolor=GREEN, font=base_font)
-        style.configure("TSpinbox", fieldbackground="#101010", foreground=GREEN, arrowcolor=GREEN, arrowsize=13, font=base_font)
+        style.configure("TSpinbox", fieldbackground="#101010", foreground=GREEN, arrowcolor=GREEN, arrowsize=15, font=base_font)
         style.configure("TCombobox", fieldbackground="#101010", background="#101010", foreground=GREEN, font=base_font)
         style.configure(
             "Camera.TCombobox",
@@ -371,9 +371,9 @@ class AlignmentGUI:
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(1, weight=1)
         outer.rowconfigure(0, weight=1)
-        outer.rowconfigure(1, minsize=125)
+        outer.rowconfigure(1, minsize=140)
 
-        left = ttk.Frame(outer, padding=(0, 0, 12, 0), width=245)
+        left = ttk.Frame(outer, padding=(0, 0, 14, 0), width=265)
         left.grid(row=0, column=0, rowspan=2, sticky="ns")
         left.grid_propagate(False)
         self.workflow_header_button = tk.Button(
@@ -389,15 +389,15 @@ class AlignmentGUI:
             highlightthickness=0,
             anchor="w",
             cursor="hand2",
-            font=(self.retro_font, 14, "bold"),
+            font=(self.retro_font, 16, "bold"),
         )
-        self.workflow_header_button.pack(fill="x", pady=(0, 8))
+        self.workflow_header_button.pack(fill="x", pady=(0, 10))
         for kind, label in LABELS.items():
             button = ttk.Button(left, text=label, style="Step.TButton", width=27, command=lambda k=kind: self.select_scan(k))
-            button.pack(fill="x", pady=2)
+            button.pack(fill="x", pady=3)
             self.step_buttons[kind] = button
         range_row = ttk.Frame(left)
-        range_row.pack(fill="x", pady=(10, 3))
+        range_row.pack(fill="x", pady=(13, 5))
         self.workflow_run_button = ttk.Button(
             range_row, text="RUN", style="Run.TButton", command=self.run_full_workflow
         )
@@ -405,13 +405,13 @@ class AlignmentGUI:
         self.workflow_start_entry = ttk.Spinbox(
             range_row, from_=1, to=len(LABELS), textvariable=self.workflow_start, width=3, justify="center"
         )
-        self.workflow_start_entry.pack(side="left", ipady=2)
+        self.workflow_start_entry.pack(side="left", ipady=3)
         ttk.Label(range_row, text="→", style="Muted.TLabel").pack(side="left", padx=4)
         self.workflow_end_entry = ttk.Spinbox(
             range_row, from_=1, to=len(LABELS), textvariable=self.workflow_end, width=3, justify="center"
         )
-        self.workflow_end_entry.pack(side="left", ipady=2)
-        ttk.Separator(left).pack(fill="x", pady=12)
+        self.workflow_end_entry.pack(side="left", ipady=3)
+        ttk.Separator(left).pack(fill="x", pady=16)
         ttk.Label(left, text="SAVE CAMERA FRAME", style="Header.TLabel").pack(anchor="w", pady=(0, 7))
         camera_row = ttk.Frame(left)
         camera_row.pack(fill="x", pady=2)
@@ -435,9 +435,9 @@ class AlignmentGUI:
             width=6,
         )
         self.camera_frames_entry.grid(row=1, column=1, sticky="ew", padx=(7, 0))
-        ttk.Label(left, text="Optional filename", style="Muted.TLabel").pack(anchor="w", pady=(7, 1))
+        ttk.Label(left, text="Optional filename", style="Muted.TLabel").pack(anchor="w", pady=(6, 1))
         ttk.Entry(left, textvariable=self.camera_filename).pack(fill="x", pady=2)
-        ttk.Label(left, text="Destination folder", style="Muted.TLabel").pack(anchor="w", pady=(7, 1))
+        ttk.Label(left, text="Destination folder", style="Muted.TLabel").pack(anchor="w", pady=(6, 1))
         camera_path_row = ttk.Frame(left)
         camera_path_row.pack(fill="x", pady=2)
         camera_path_row.columnconfigure(0, weight=1)
@@ -445,7 +445,52 @@ class AlignmentGUI:
         self.camera_browse_button = ttk.Button(camera_path_row, text="…", width=3, command=self.choose_camera_directory)
         self.camera_browse_button.grid(row=0, column=1, padx=(5, 0))
         self.camera_button = ttk.Button(left, text="ACQUIRE", command=self.acquire_camera_frame)
-        self.camera_button.pack(fill="x", pady=3)
+        self.camera_button.pack(fill="x", pady=(5, 2))
+
+        # Use the otherwise empty lower-left column for the live mount
+        # readback.  Keeping it in its own bottom-anchored panel prevents the
+        # camera form from claiming the remaining height.
+        mount_panel = ttk.Frame(left)
+        mount_panel.pack(side="bottom", fill="x")
+        ttk.Separator(mount_panel).pack(fill="x", pady=(10, 10))
+        self.mount_header_button = tk.Button(
+            mount_panel,
+            text="MOUNT CONFIGURATION",
+            command=self.open_advanced_mount,
+            bg=BG,
+            fg=GREEN,
+            activebackground=BG,
+            activeforeground=FG,
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            anchor="w",
+            cursor="hand2",
+            font=(self.retro_font, 14, "bold"),
+        )
+        self.mount_header_button.pack(fill="x", pady=(0, 4))
+        mount_grid = tk.Frame(mount_panel, bg=BG)
+        mount_grid.pack(fill="x")
+        for index, axis in enumerate(("pitch", "yaw", "roll", "x", "y", "z")):
+            row, column = divmod(index, 3)
+            cell = tk.Frame(mount_grid, bg="#080808", highlightbackground=GRID, highlightthickness=1)
+            cell.grid(row=row, column=column, sticky="nsew", padx=1, pady=1)
+            mount_grid.columnconfigure(column, weight=1)
+            mount_grid.rowconfigure(row, weight=1)
+            tk.Label(
+                cell,
+                text=axis.upper(),
+                bg="#080808",
+                fg=GREEN,
+                font=(self.retro_font, 8, "bold"),
+            ).pack(anchor="center", pady=(1, 0))
+            tk.Label(
+                cell,
+                textvariable=self.mount_values[axis],
+                bg="#080808",
+                fg=FG,
+                font=(self.retro_font, 9),
+            ).pack(anchor="center", pady=(0, 1))
 
         center = ttk.Frame(outer)
         center.grid(row=0, column=1, sticky="nsew")
@@ -466,7 +511,7 @@ class AlignmentGUI:
 
         self.dm_tab.rowconfigure(0, weight=1)
         self.dm_tab.columnconfigure(1, weight=1)
-        dm_sidebar = ttk.Frame(self.dm_tab, padding=(8, 10, 8, 8), width=215)
+        dm_sidebar = ttk.Frame(self.dm_tab, padding=(8, 10, 8, 8), width=235)
         dm_sidebar.grid(row=0, column=0, sticky="ns")
         dm_sidebar.grid_propagate(False)
         dm_sidebar.columnconfigure(0, weight=1)
@@ -494,7 +539,7 @@ class AlignmentGUI:
                 anchor="w",
                 padx=5,
                 pady=5,
-                font=(self.retro_font, 8),
+                font=(self.retro_font, 9),
             ).grid(row=row, column=0, sticky="ew")
             ttk.Entry(
                 inspector,
@@ -579,116 +624,52 @@ class AlignmentGUI:
         self.null_live_canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
         self._plot_null_live_placeholder("Waiting for initial APAPANE frame…")
 
-        right = ttk.Frame(outer, padding=(12, 0, 0, 0), width=310)
-        right.grid(row=0, column=2, rowspan=2, sticky="nsew")
+        right = ttk.Frame(outer, padding=(14, 0, 0, 0), width=335)
+        right.grid(row=0, column=2, sticky="nsew")
         right.grid_propagate(False)
-        brand = tk.Frame(right, bg=BG, height=64)
-        brand.pack(side="bottom", fill="x", pady=(12, 0))
-        brand.pack_propagate(False)
-        configured_logo = self.config.get("gui", {}).get("brand_logo", "config/glint_ohia_logo.png")
-        logo_path = Path(str(configured_logo)).expanduser()
-        if not logo_path.is_absolute():
-            logo_path = Path(self.config["_root"]) / logo_path
-        if not logo_path.is_file():
-            raise RuntimeError(f"Configured GUI logo does not exist: {logo_path}")
-        source_logo = tk.PhotoImage(file=str(logo_path))
-        # Tk can display PNG files without adding Pillow as an instrument
-        # dependency. Preserve the source aspect ratio and fit inside the fixed
-        # 310 x 64 footer using one integer subsampling factor.
-        subsample = max(1, int(np.ceil(max(source_logo.width() / 286.0, source_logo.height() / 63.0))))
-        self.brand_logo_image = source_logo.subsample(subsample, subsample)
-        tk.Label(
-            brand,
-            image=self.brand_logo_image,
-            bg=BG,
-            borderwidth=0,
-            highlightthickness=0,
-        ).pack(fill="both", expand=True)
         right_content = ttk.Frame(right)
-        right_content.pack(side="top", fill="both", expand=True)
-        ttk.Label(right_content, text="SCAN SETTINGS", style="Header.TLabel").pack(anchor="w")
+        right_content.pack(fill="both", expand=True)
+        ttk.Label(right_content, text="SCAN SETTINGS", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
         self.parameter_frame = ttk.Frame(right_content)
-        self.parameter_frame.pack(fill="x", pady=8)
+        self.parameter_frame.pack(fill="x", pady=12)
         self.run_button = ttk.Button(
             right_content,
             text="RUN SELECTED SCAN",
             style="Accent.TButton",
             command=self.run_selected,
         )
-        self.run_button.pack(fill="x", pady=4)
+        self.run_button.pack(fill="x", pady=6)
         self.abort_button = ttk.Button(right_content, text="ABORT + RESTORE", command=self.abort, state="disabled")
-        ttk.Separator(right_content).pack(fill="x", pady=10)
-        ttk.Label(right_content, text="REVIEW", style="Header.TLabel").pack(anchor="w")
+        ttk.Separator(right_content).pack(fill="x", pady=14)
+        ttk.Label(right_content, text="REVIEW", style="Header.TLabel").pack(anchor="w", pady=(0, 6))
         self.apply_button = ttk.Button(
             right_content,
             text="APPLY RECOMMENDED VALUES",
             command=self.apply_result,
             state="disabled",
         )
-        self.apply_button.pack(fill="x", pady=2)
+        self.apply_button.pack(fill="x", pady=4)
         self.xy_loop_button = ttk.Button(
             right_content,
             text="APPLY X/Y → PITCH/YAW",
             command=lambda: self.apply_result(next_kind="pitch_yaw"),
             state="disabled",
         )
-        self.xy_loop_button.pack(fill="x", pady=2)
+        self.xy_loop_button.pack(fill="x", pady=4)
         self.redo_button = ttk.Button(right_content, text="REDO SCAN", command=self.redo, state="disabled")
-        self.redo_button.pack(fill="x", pady=2)
+        self.redo_button.pack(fill="x", pady=4)
         self.exit_button = ttk.Button(right_content, text="RESTORE / EXIT", command=self.exit_review, state="disabled")
-        self.exit_button.pack(fill="x", pady=2)
+        self.exit_button.pack(fill="x", pady=4)
 
-        status_panel = ttk.Frame(outer, padding=(0, 8, 0, 0), height=125)
-        status_panel.grid(row=1, column=1, sticky="nsew")
+        status_panel = ttk.Frame(outer, padding=(0, 8, 0, 0), height=140)
+        status_panel.grid(row=1, column=1, columnspan=2, sticky="nsew")
         status_panel.grid_propagate(False)
-        # Mount readback and Status each own exactly half of the hardware strip.
-        status_panel.columnconfigure(0, weight=1, minsize=0, uniform="hardware_strip")
-        status_panel.columnconfigure(1, weight=1, minsize=0, uniform="hardware_strip")
+        status_panel.columnconfigure(0, weight=1, minsize=0)
+        status_panel.columnconfigure(1, weight=0, minsize=245)
         status_panel.rowconfigure(0, weight=1)
 
-        mount_panel = ttk.Frame(status_panel, padding=(0, 0, 14, 0))
-        mount_panel.grid(row=0, column=0, sticky="nsew")
-        self.mount_header_button = tk.Button(
-            mount_panel,
-            text="MOUNT CONFIGURATION",
-            command=self.open_advanced_mount,
-            bg=BG,
-            fg=GREEN,
-            activebackground=BG,
-            activeforeground=FG,
-            relief="flat",
-            borderwidth=0,
-            highlightthickness=0,
-            anchor="w",
-            cursor="hand2",
-            font=(self.retro_font, 14, "bold"),
-        )
-        self.mount_header_button.pack(fill="x", pady=(0, 4))
-        mount_grid = tk.Frame(mount_panel, bg=BG)
-        mount_grid.pack(fill="both", expand=True)
-        for index, axis in enumerate(("pitch", "yaw", "roll", "x", "y", "z")):
-            row, column = divmod(index, 3)
-            cell = tk.Frame(mount_grid, bg="#080808", highlightbackground=GRID, highlightthickness=1)
-            cell.grid(row=row, column=column, sticky="nsew", padx=2, pady=2)
-            mount_grid.columnconfigure(column, weight=1)
-            mount_grid.rowconfigure(row, weight=1)
-            tk.Label(
-                cell,
-                text=axis.upper(),
-                bg="#080808",
-                fg=GREEN,
-                font=(self.retro_font, 8, "bold"),
-            ).pack(anchor="center", pady=(2, 0))
-            tk.Label(
-                cell,
-                textvariable=self.mount_values[axis],
-                bg="#080808",
-                fg=FG,
-                font=(self.retro_font, 9),
-            ).pack(anchor="center", pady=(0, 2))
-
         status_right = ttk.Frame(status_panel)
-        status_right.grid(row=0, column=1, sticky="nsew")
+        status_right.grid(row=0, column=0, sticky="nsew", padx=(0, 18))
         status_right.columnconfigure(0, weight=1)
         status_right.rowconfigure(4, weight=1)
         status_header = ttk.Frame(status_right)
@@ -717,9 +698,36 @@ class AlignmentGUI:
             state="disabled",
             cursor="arrow",
             takefocus=0,
-            font=(self.retro_font, 8),
+            font=(self.retro_font, 9),
         )
         self.log_text.grid(row=4, column=0, sticky="nsew")
+
+        # The logo lives in a dedicated lower-right cell spanning the former
+        # mount/status strip and the scan-settings column.  This guarantees the
+        # image enough width even when an external window manager makes the GUI
+        # narrower than its requested geometry.
+        brand = tk.Frame(status_panel, bg=BG, width=235, height=132)
+        brand.grid(row=0, column=1, sticky="nsew")
+        brand.grid_propagate(False)
+        configured_logo = self.config.get("gui", {}).get("brand_logo", "config/glint_ohia_logo.png")
+        logo_path = Path(str(configured_logo)).expanduser()
+        if not logo_path.is_absolute():
+            logo_path = Path(self.config["_root"]) / logo_path
+        if not logo_path.is_file():
+            raise RuntimeError(f"Configured GUI logo does not exist: {logo_path}")
+        source_logo = tk.PhotoImage(file=str(logo_path))
+        # Tk can display PNG files without adding Pillow as an instrument
+        # dependency. Preserve the source aspect ratio and fit inside the
+        # dedicated logo cell using one integer subsampling factor.
+        subsample = max(1, int(np.ceil(max(source_logo.width() / 225.0, source_logo.height() / 126.0))))
+        self.brand_logo_image = source_logo.subsample(subsample, subsample)
+        tk.Label(
+            brand,
+            image=self.brand_logo_image,
+            bg=BG,
+            borderwidth=0,
+            highlightthickness=0,
+        ).pack(fill="both", expand=True)
 
     def open_workflow_defaults(self) -> None:
         """Open the persistent editor for every scan's configured defaults."""
@@ -900,7 +908,7 @@ class AlignmentGUI:
             ]
         for key, label, value in definitions:
             row = ttk.Frame(self.parameter_frame)
-            row.pack(fill="x", pady=2)
+            row.pack(fill="x", pady=4)
             ttk.Label(row, text=label).pack(side="left")
             variable = tk.StringVar(value=str(value))
             ttk.Entry(row, textvariable=variable, width=11).pack(side="right")
@@ -1398,8 +1406,8 @@ class AlignmentGUI:
         ax = self.figure.add_subplot(111)
         ax.set_facecolor(BG)
         ax.axis("off")
-        ax.text(0.5, 0.55, LABELS[kind].upper(), color=GREEN, fontsize=18, ha="center", fontfamily="monospace")
-        ax.text(0.5, 0.46, "CONFIRM SETTINGS, THEN RUN", color=MUTED, fontsize=10, ha="center", fontfamily="monospace")
+        ax.text(0.5, 0.55, LABELS[kind].upper(), color=GREEN, fontsize=20, ha="center", fontfamily="monospace")
+        ax.text(0.5, 0.46, "CONFIRM SETTINGS, THEN RUN", color=MUTED, fontsize=11, ha="center", fontfamily="monospace")
         self.canvas.draw_idle()
 
     def _plot_dark_status(self, kind: str, nframes: int) -> None:

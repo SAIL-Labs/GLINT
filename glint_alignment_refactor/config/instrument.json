@@ -19,7 +19,8 @@
     "brand_logo": "config/glint_ohia_logo.png"
   },
   "calibration_assets": {
-    "bulk_response_matrix": "config/response_matrix.npy"
+    "bulk_response_matrix": "config/response_matrix.npy",
+    "detector_boxes": "config/detector_boxes.json"
   },
   "null_live": {
     "refresh_s": 10.0,
@@ -73,6 +74,11 @@
     "motion_timeout_s": 10
   },
   "instrument": {
+    "injected_segments": [
+      11,
+      20,
+      31
+    ],
     "dm": {
       "ptt_shm": "dmptt",
       "voltage_shm": "dmvolt"

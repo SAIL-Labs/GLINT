@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "scan_kind": "each_segment_tiptilt",
+  "description": "Raster each of the 37 DM segments individually while the other 36 remain at one common PTT.",
+  "grid": {
+    "tip": {
+      "start": -4.0,
+      "stop": 4.0,
+      "step": 0.2
+    },
+    "tilt": {
+      "start": -4.0,
+      "stop": 4.0,
+      "step": 0.2
+    }
+  },
+  "nframes": 10,
+  "repeats": 1,
+  "dm_settle_s": 0.001,
+  "initial_settle_s": 0.01,
+  "serpentine": true,
+  "rest_of_dm": {
+    "piston_um": 0.0,
+    "tip_mrad": 0.0,
+    "tilt_mrad": 5.0
+  },
+  "scanned_segment": {
+    "piston_um": 0.0
+  },
+  "saved_boxes": {
+    "photometry": [
+      "Phot 1",
+      "Phot 2",
+      "Phot 3"
+    ],
+    "null": [],
+    "fringe_tracking": {}
+  },
+  "output_subdirectory": "standalone_tiptilt_maps/each_segment",
+  "minimum_free_space_gb": 2.0
+}
