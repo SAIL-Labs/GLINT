@@ -314,7 +314,7 @@ def plot_scan(baseline: list, scan: np.ndarray, opd: np.ndarray, iteration: int,
     plt.plot(opd, scan)
     plt.xlabel('OPD (um)')
     plt.ylabel('Summed flux')
-    plt.title(f'Narrowband piston scan for aperture {seg1}')
+    plt.title(f'Piston scan for baseline {seg1}:{seg2}')
     plt.grid(True)
 
     if save:
