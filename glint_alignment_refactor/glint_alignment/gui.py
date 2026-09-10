@@ -79,6 +79,28 @@ LABELS = {
 
 CAMERA_DISPLAY_TO_KEY = {label: key for key, label in CAMERA_LABELS.items()}
 
+# Presentation-only ordering for the DM-state plot.  The tuple is indexed by
+# the original right-to-left/top-to-bottom display slot; its value is the real
+# segment (label, state, selection, and outline) drawn in that slot.  Hardware
+# access and commands continue to use the real segment number.
+DM_SEGMENT_BY_DISPLAY_SLOT = (
+    3, 8, 14, 21,
+    2, 7, 13, 20, 27,
+    1, 6, 12, 19, 26, 32,
+    0, 5, 11, 18, 25, 31, 36,
+    4, 10, 17, 24, 30, 35,
+    9, 16, 23, 29, 34,
+    15, 22, 28, 33,
+)
+
+# Unit vectors in the DM plot's Cartesian coordinates.  TILT follows the
+# displayed 0 -> 3 column (down-right); TIP is perpendicular and points toward
+# the successively numbered columns (down-left).  The sidebar reference and
+# the segment gradients both use these vectors.
+_DM_DISPLAY_AXIS_NORM = float(np.hypot(53.0, 38.0))
+DM_DISPLAY_TILT_AXIS = (53.0 / _DM_DISPLAY_AXIS_NORM, -38.0 / _DM_DISPLAY_AXIS_NORM)
+DM_DISPLAY_TIP_AXIS = (-38.0 / _DM_DISPLAY_AXIS_NORM, -53.0 / _DM_DISPLAY_AXIS_NORM)
+
 
 def flatten_default_settings(mapping: dict, prefix: tuple[str, ...] = ()):
     """Yield scan-setting leaves while preserving their JSON order."""
@@ -155,7 +177,7 @@ def dm_segment_rgba(
     full_scale_mrad: float,
     resolution: int = 96,
 ) -> np.ndarray:
-    """Encode tip/tilt as a black-to-piston-colour directional gradient."""
+    """Encode tip/tilt in the rotated display frame, black on the positive side."""
     piston_rgb = np.asarray(piston_color[:3], dtype=float)
     magnitude = float(np.hypot(tip_mrad, tilt_mrad))
     strength = min(magnitude / max(float(full_scale_mrad), 1e-9), 1.0)
@@ -164,8 +186,12 @@ def dm_segment_rgba(
     if magnitude <= 1e-9:
         mixture = np.ones_like(xx)
     else:
-        direction = (xx * tip_mrad + yy * tilt_mrad) / magnitude
-        directional_ramp = np.clip(0.5 + 0.5 * direction, 0.0, 1.0)
+        display_dx = tip_mrad * DM_DISPLAY_TIP_AXIS[0] + tilt_mrad * DM_DISPLAY_TILT_AXIS[0]
+        display_dy = tip_mrad * DM_DISPLAY_TIP_AXIS[1] + tilt_mrad * DM_DISPLAY_TILT_AXIS[1]
+        direction = (xx * display_dx + yy * display_dy) / magnitude
+        # A positive command darkens the side pointed to by its positive-axis
+        # arrow; the opposite side retains the piston colour.
+        directional_ramp = np.clip(0.5 - 0.5 * direction, 0.0, 1.0)
         mixture = (1.0 - strength) + strength * directional_ramp
     rgba = np.empty((resolution, resolution, 4), dtype=float)
     rgba[:, :, :3] = mixture[:, :, None] * piston_rgb
@@ -451,7 +477,7 @@ class AlignmentGUI:
         # readback.  Keeping it in its own bottom-anchored panel prevents the
         # camera form from claiming the remaining height.
         mount_panel = ttk.Frame(left)
-        mount_panel.pack(side="bottom", fill="x")
+        mount_panel.pack(side="bottom", fill="x", pady=(0, 24))
         ttk.Separator(mount_panel).pack(fill="x", pady=(10, 10))
         self.mount_header_button = tk.Button(
             mount_panel,
@@ -596,6 +622,73 @@ class AlignmentGUI:
             button.grid(row=0, column=column, sticky="ew", padx=(0 if column == 0 else 3, 0))
             preset_row.columnconfigure(column, weight=1)
             self.dm_preset_buttons[preset] = button
+
+        ttk.Separator(dm_controls).pack(fill="x", pady=(12, 8))
+        ttk.Label(dm_controls, text="TIP / TILT REFERENCE", style="Muted.TLabel").pack(anchor="w")
+        reference = tk.Canvas(
+            dm_controls,
+            width=205,
+            height=105,
+            bg=BG,
+            highlightthickness=0,
+            borderwidth=0,
+        )
+        reference.pack(anchor="w", pady=(2, 0))
+        origin_x, origin_y = 86, 29
+        reference_axis_length = 65
+        tilt_end = (
+            origin_x + reference_axis_length * DM_DISPLAY_TILT_AXIS[0],
+            origin_y - reference_axis_length * DM_DISPLAY_TILT_AXIS[1],
+        )
+        tip_end = (
+            origin_x + reference_axis_length * DM_DISPLAY_TIP_AXIS[0],
+            origin_y - reference_axis_length * DM_DISPLAY_TIP_AXIS[1],
+        )
+        # Positive TILT follows the displayed 0 -> 3 segment column.  Positive
+        # TIP is perpendicular and points toward the successively numbered
+        # columns (4..., 9..., 15...).
+        reference.create_line(
+            origin_x,
+            origin_y,
+            *tilt_end,
+            fill=GREEN,
+            width=2,
+            arrow=tk.LAST,
+            arrowshape=(8, 10, 3),
+        )
+        reference.create_line(
+            origin_x,
+            origin_y,
+            *tip_end,
+            fill=GREEN,
+            width=2,
+            arrow=tk.LAST,
+            arrowshape=(8, 10, 3),
+        )
+        reference.create_oval(
+            origin_x - 2,
+            origin_y - 2,
+            origin_x + 2,
+            origin_y + 2,
+            fill=FG,
+            outline=FG,
+        )
+        reference.create_text(
+            146,
+            68,
+            text="TILT",
+            anchor="w",
+            fill=GREEN,
+            font=(self.retro_font, 9, "bold"),
+        )
+        reference.create_text(
+            43,
+            88,
+            text="TIP",
+            anchor="n",
+            fill=GREEN,
+            font=(self.retro_font, 9, "bold"),
+        )
 
         self.dm_figure = Figure(figsize=(7.2, 6.2), dpi=100, facecolor=BG)
         self.dm_canvas = FigureCanvasTkAgg(self.dm_figure, master=self.dm_tab)
@@ -2357,12 +2450,14 @@ class AlignmentGUI:
             piston_values,
             float(self.config.get("dm_display", {}).get("piston_linthresh_um", 0.02)),
         )
-        segment = 0
+        display_slot = 0
         for column, count in enumerate(counts):
             x = 4.5 - 1.5 * column
             for row in range(count):
                 y = (count - 1) * 0.88 - row * 1.76
+                segment = DM_SEGMENT_BY_DISPLAY_SLOT[display_slot]
                 ptt = state[segment]
+                is_injected = segment in {11, 20, 31}
                 piston_color = cmap(norm(ptt.piston_um))
                 patch = RegularPolygon(
                     (x, y),
@@ -2373,8 +2468,8 @@ class AlignmentGUI:
                     # bottom edges are flat in both GUI backends.
                     orientation=-np.pi / 6,
                     facecolor="none",
-                    edgecolor=RED if segment in {11, 20, 31} else "#b9c3bd",
-                    linewidth=3.2 if segment in {11, 20, 31} else 1,
+                    edgecolor=RED if is_injected else "#b9c3bd",
+                    linewidth=3.2 if is_injected else 1,
                     zorder=3,
                 )
                 ax.add_patch(patch)
@@ -2419,7 +2514,7 @@ class AlignmentGUI:
                             zorder=5,
                         )
                     )
-                segment += 1
+                display_slot += 1
         ax.set_xlim(-6, 6)
         ax.set_ylim(-6.5, 6.5)
         ax.set_aspect("equal")

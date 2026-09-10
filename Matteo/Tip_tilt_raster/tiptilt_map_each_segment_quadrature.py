@@ -16,6 +16,10 @@ Telescope-owned paths and SHM names come from the GLINT alignment refactor's
 Experiment settings come from ``tiptilt_map_each_segment_quadrature.json``
 beside this script.  The complete live DM state is captured before the first
 command and is always restored on success, error, or Ctrl+C.
+
+Only the dark-subtracted, spatially integrated flux for each selected detector
+box is saved for every acquired frame.  Detector-pixel crop cubes are not
+retained.
 """
 
 from __future__ import annotations
@@ -47,9 +51,10 @@ DEFAULT_INSTRUMENT_CONFIG = (
 )
 DEFAULT_SCAN_CONFIG = (
     Path(__file__).resolve().parents[0]
-    / "config"
-    / "tiptilt_map_each_segment_quadrature.json"
+    /"config"
+    /"tiptilt_map_each_segment_quadrature.json"
 )
+
 
 @dataclass(frozen=True)
 class BoxSpec:
@@ -589,7 +594,7 @@ def frame_cube(values: Any, nframes: int, frame_shape: tuple[int, int]) -> np.nd
         if nframes != 1:
             raise RuntimeError(
                 f"APAPANE multi_recv_data({nframes}) returned one averaged 2-D image; "
-                "individual-frame box storage requires a 3-D frame cube"
+                "per-frame box integration requires a 3-D frame cube"
             )
         frames = frames[None, :, :]
     elif frames.ndim == 3 and frames.shape[0] != nframes and frames.shape[-1] == nframes:
@@ -601,36 +606,34 @@ def frame_cube(values: Any, nframes: int, frame_shape: tuple[int, int]) -> np.nd
     return frames
 
 
-def acquire_box_crops(
+def acquire_box_fluxes(
     apapane: Any,
     dark: np.ndarray,
     nframes: int,
     specs: list[BoxSpec],
 ) -> dict[str, np.ndarray]:
+    """Acquire frames, subtract the master dark, and integrate each box."""
     frames = frame_cube(apapane.multi_recv_data(int(nframes)), nframes, dark.shape)
     corrected = np.asarray(frames, dtype=np.float32) - np.asarray(dark, dtype=np.float32)[None, :, :]
-    crops: dict[str, np.ndarray] = {}
+    fluxes: dict[str, np.ndarray] = {}
     for spec in specs:
         y0, y1, x0, x1 = spec.bounds
-        crops[spec.identifier] = corrected[:, y0:y1, x0:x1].copy()
-    return crops
+        fluxes[spec.identifier] = corrected[:, y0:y1, x0:x1].sum(
+            axis=(1, 2), dtype=np.float64
+        )
+    return fluxes
 
 
-def allocate_raster_arrays(
+def allocate_flux_raster_arrays(
     specs: list[BoxSpec],
     ntip: int,
     ntilt: int,
     nframes: int,
-) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
-    crops = {
-        spec.identifier: np.empty((ntip, ntilt, nframes, spec.height, spec.width), dtype=np.float32)
-        for spec in specs
-    }
-    fluxes = {
+) -> dict[str, np.ndarray]:
+    return {
         spec.identifier: np.empty((ntip, ntilt, nframes), dtype=np.float64)
         for spec in specs
     }
-    return crops, fluxes
 
 
 def grid_indices(ntip: int, ntilt: int, serpentine: bool) -> Iterable[tuple[int, int]]:
@@ -653,16 +656,12 @@ def scan_quadrature_raster(
     specs: list[BoxSpec],
     settle_s: float,
     serpentine: bool,
-) -> tuple[
-    list[dict[str, np.ndarray]],
-    list[dict[str, np.ndarray]],
-]:
-    phase_crops: list[dict[str, np.ndarray]] = []
+) -> list[dict[str, np.ndarray]]:
     phase_fluxes: list[dict[str, np.ndarray]] = []
     for _ in phase_steps:
-        crops, fluxes = allocate_raster_arrays(specs, len(tips), len(tilts), nframes)
-        phase_crops.append(crops)
-        phase_fluxes.append(fluxes)
+        phase_fluxes.append(
+            allocate_flux_raster_arrays(specs, len(tips), len(tilts), nframes)
+        )
     total = len(tips) * len(tilts)
     report_every = max(1, total // 20)
     for completed, (tip_index, tilt_index) in enumerate(
@@ -678,19 +677,17 @@ def scan_quadrature_raster(
                 tilts[tilt_index],
             )
             time.sleep(settle_s)
-            crops = acquire_box_crops(apapane, dark, nframes, specs)
+            fluxes = acquire_box_fluxes(apapane, dark, nframes, specs)
             for spec in specs:
-                crop = crops[spec.identifier]
-                phase_crops[phase_index][spec.identifier][tip_index, tilt_index] = crop
-                phase_fluxes[phase_index][spec.identifier][tip_index, tilt_index] = crop.sum(
-                    axis=(1, 2), dtype=np.float64
+                phase_fluxes[phase_index][spec.identifier][tip_index, tilt_index] = (
+                    fluxes[spec.identifier]
                 )
         if completed == 1 or completed == total or completed % report_every == 0:
             print(
                 f"  segment {segment:02d}: {completed:4d}/{total} tip/tilt points "
                 f"x {len(phase_steps)} phases"
             )
-    return phase_crops, phase_fluxes
+    return phase_fluxes
 
 
 def save_raster_fits(
@@ -706,7 +703,6 @@ def save_raster_fits(
     scanned_piston_um: float,
     initial_dm: np.ndarray,
     specs: list[BoxSpec],
-    crops: dict[str, np.ndarray],
     fluxes: dict[str, np.ndarray],
     dark_path: Path,
     detector_boxes_path: Path,
@@ -728,7 +724,11 @@ def save_raster_fits(
     primary.header["RESTTIP"] = float(rest_ptt[1])
     primary.header["RESTTILT"] = float(rest_ptt[2])
     primary.header["SCANPST"] = float(scanned_piston_um)
-    primary.header.add_comment("All crop cubes are dark-subtracted and preserve every acquired frame.")
+    primary.header["DARKSUB"] = (True, "Master dark subtracted before box integration")
+    primary.header["DATAMODE"] = ("FLUXONLY", "One integrated flux value per frame and box")
+    primary.header.add_comment(
+        "FLUX arrays are integrated after per-pixel dark subtraction and preserve every frame."
+    )
     primary.header.add_comment(f"APAPANE dark: {dark_path}")
     primary.header.add_comment(f"Detector boxes: {detector_boxes_path}")
     for key, value in (primary_metadata or {}).items():
@@ -742,20 +742,12 @@ def save_raster_fits(
         fits.ImageHDU(np.asarray(initial_dm, dtype=np.float32), name="INITIAL_DM"),
     ]
     for index, spec in enumerate(specs, start=1):
-        crop_hdu = fits.ImageHDU(np.asarray(crops[spec.identifier], dtype=np.float32), name=f"BOX{index:03d}")
-        crop_hdu.header["BOXNAME"] = spec.identifier
-        crop_hdu.header["Y0"], crop_hdu.header["Y1"], crop_hdu.header["X0"], crop_hdu.header["X1"] = spec.bounds
-        crop_hdu.header["DIMS"] = "tip,tilt,frame,y,x"
         flux_hdu = fits.ImageHDU(np.asarray(fluxes[spec.identifier], dtype=np.float64), name=f"FLUX{index:03d}")
         flux_hdu.header["BOXNAME"] = spec.identifier
+        flux_hdu.header["Y0"], flux_hdu.header["Y1"], flux_hdu.header["X0"], flux_hdu.header["X1"] = spec.bounds
+        flux_hdu.header["NPIXELS"] = int(spec.height * spec.width)
         flux_hdu.header["DIMS"] = "tip,tilt,frame"
-        mean_hdu = fits.ImageHDU(
-            np.asarray(fluxes[spec.identifier].mean(axis=2), dtype=np.float64),
-            name=f"MEAN{index:03d}",
-        )
-        mean_hdu.header["BOXNAME"] = spec.identifier
-        mean_hdu.header["DIMS"] = "tip,tilt"
-        hdus.extend((crop_hdu, flux_hdu, mean_hdu))
+        hdus.append(flux_hdu)
 
     temporary = path.with_name(path.name + ".partial")
     try:
@@ -816,17 +808,15 @@ def validate_scan_config(scan: dict[str, Any], expected_kind: str) -> dict[str, 
     return scan
 
 
-def estimated_crop_bytes(
+def estimated_flux_bytes(
     specs: list[BoxSpec],
     npoints: int,
     nframes: int,
     rasters: int,
     repeats: int,
 ) -> int:
-    pixels = sum(spec.height * spec.width for spec in specs)
-    crop_bytes = rasters * repeats * npoints * nframes * pixels * np.dtype(np.float32).itemsize
     flux_bytes = rasters * repeats * npoints * nframes * len(specs) * np.dtype(np.float64).itemsize
-    return int(crop_bytes + flux_bytes)
+    return int(flux_bytes)
 
 
 def human_bytes(value: int) -> str:
@@ -913,7 +903,7 @@ def run(scan_args: argparse.Namespace) -> Path | None:
     validate_boxes_against_dark(specs, dark)
     output_parent = resolve_output_root(instrument, instrument_path) / scan["output_subdirectory"]
     npoints = len(scan["_tips"]) * len(scan["_tilts"])
-    estimate = estimated_crop_bytes(
+    estimate = estimated_flux_bytes(
         specs,
         npoints,
         scan["_nframes"],
@@ -979,6 +969,7 @@ def run(scan_args: argparse.Namespace) -> Path | None:
         "saved_boxes": [spec.as_dict() for spec in specs],
         "apapane_dark_file": str(dark_path),
         "apapane_dark_sha256": sha256_file(dark_path),
+        "detector_storage_mode": "dark_subtracted_integrated_flux_per_frame",
         "estimated_payload_bytes": estimate,
         "outputs": [],
     }
@@ -1010,7 +1001,7 @@ def run(scan_args: argparse.Namespace) -> Path | None:
                     target_summary={"all_segments": ptt_dict(scan["_rest_ptt"])},
                 )
                 time.sleep(scan["_initial_settle_s"])
-                phase_crops, phase_fluxes = scan_quadrature_raster(
+                phase_fluxes = scan_quadrature_raster(
                     apapane=apapane,
                     dm=dm,
                     segment=segment,
@@ -1041,7 +1032,6 @@ def run(scan_args: argparse.Namespace) -> Path | None:
                         scanned_piston_um=phase_step.surface_piston_um,
                         initial_dm=initial_dm,
                         specs=specs,
-                        crops=phase_crops[phase_index],
                         fluxes=phase_fluxes[phase_index],
                         dark_path=dark_path,
                         detector_boxes_path=detector_path,

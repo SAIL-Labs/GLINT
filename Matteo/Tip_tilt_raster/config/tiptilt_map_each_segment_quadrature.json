@@ -15,15 +15,15 @@
       "step": 0.2
     }
   },
-  "nframes": 10,
+  "nframes": 50,
   "repeats": 1,
   "dm_settle_s": 0.001,
   "initial_settle_s": 0.01,
   "serpentine": true,
   "rest_of_dm": {
     "piston_um": 0.0,
-    "tip_mrad": 0.0,
-    "tilt_mrad": 5.0
+    "tip_mrad": 3.0,
+    "tilt_mrad": -4.0
   },
   "saved_boxes": {
     "photometry": [
@@ -35,5 +35,5 @@
     "fringe_tracking": {}
   },
   "output_subdirectory": "standalone_tiptilt_maps/each_segment_quadrature",
-  "minimum_free_space_gb": 2.0
+  "minimum_free_space_gb": 8
 }

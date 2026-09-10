@@ -92,8 +92,8 @@
     "mount": {
       "port": "/dev/serial/by-id/usb-SURUGA_SEIKI_SURUGA_SEIKI_DS102-if00-port0",
       "baudrate": 38400,
-      "read_timeout_s": 1.0,
-      "write_timeout_s": 1.0,
+      "read_timeout_s": 5,
+      "write_timeout_s": 5,
       "poll_interval_s": 0.02,
       "fallback_limits": {
         "pitch": [
