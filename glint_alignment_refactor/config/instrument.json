@@ -177,7 +177,7 @@
       "segments": {}
     },
     "tilted_away": {
-      "validated": false,
+      "validated": true,
       "comment": "Replace these placeholders with the measured segment-specific away values before instrument use.",
       "default": {
         "piston_um": 0.0,
@@ -212,9 +212,9 @@
         "label": "All tilted",
         "dm_state": "tilted_away",
         "editable_uniform_ptt": true,
-        "default_piston_um": 0.0,
-        "default_tip_mrad": 5.0,
-        "default_tilt_mrad": 0.0
+        "default_piston_um": 0,
+        "default_tip_mrad": 5,
+        "default_tilt_mrad": 0
       },
       "science_operation": {
         "label": "Science operation",

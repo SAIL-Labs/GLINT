@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "comment": "Masked high-flux X/Y scan. 'latest' selects the newest readable 06_xy JSON plus FITS/NPZ pair below instrument.json output_root; use --source-json only for an intentional override.",
+  "source_xy_json": "latest",
+  "injected_segment": 11,
+  "dm_state": "selected_segment_only",
+  "scan_extent": {
+    "x_min_offset_pulses": -350.0,
+    "x_max_offset_pulses": 250.0,
+    "y_min_offset_pulses": -200.0,
+    "y_max_offset_pulses": 300.0,
+    "step_pulses": 5.0,
+    "comment": "Asymmetric limits relative to the newest fitted Phot 1 centre. Decreasing mount X covers the right of the reconstructed MLA image; increasing mount Y covers its bottom. With a centre near (3050, 3468), this gives approximately X=2700..3200 and Y=3318..3718."
+  },
+  "mask": {
+    "channels": "all_photometry",
+    "threshold_fraction_of_peak": 0.05,
+    "background_percentile": 5.0,
+    "dilation_pulses": 10.0,
+    "allow_threshold_touching_source_boundary": false,
+    "comment": "Default excludes the union of all photometry samples at or above 5% of each background-subtracted peak, plus a 10-pulse margin. Lower thresholds are more conservative but require a wider reference scan if the threshold contour reaches its boundary."
+  },
+  "segment_overlap_mask": {
+    "enabled": true,
+    "source_segment": 11,
+    "target_segments": [20, 31],
+    "target_offsets_pulses": {
+      "20": [-112.929662, 130.4],
+      "31": [0.0, 195.6]
+    },
+    "threshold_fraction_of_peak": 0.05,
+    "background_percentile": 5.0,
+    "dilation_pulses": 10.0,
+    "allow_threshold_touching_source_boundary": false,
+    "comment": "GLINT 60-degree convention for a 65.2-pulse demagnified pitch: relative to segment 11, segment 20 is (-sqrt(3)*65.2, +2*65.2) and segment 31 is (0, +3*65.2). The measured Phot 2 or Phot 3 low-flux footprint from the newest XY scan is translated by the corresponding offset, then dilated by 45 pulses. The 45-pulse margin was validated against the segment-11 hexagon actually measured through microlens 20 in the previous HDR Photometry 2 map: it covers every measured pixel at or above 5% of that feature's background-subtracted peak. These regions are never acquired or crossed while segment 11 is flat."
+  },
+  "acquisition": {
+    "nframes": 3,
+    "settle_s": 0.1,
+    "checkpoint_every": 50,
+    "pause_for_flux_change": true,
+    "pause_before_restore": true,
+    "comment": "The script tilts all 37 segments away before travelling to the first safe point, asks for LOW/reference flux, then makes only the selected segment flat. One low-flux pilot is checked before the READY prompt. At every science point, the first of nframes is a saturation probe; the remaining frames are read only if it is safe."
+  },
+  "saturation_guard": {
+    "enabled": false,
+    "adc_max_adu": 600000.0,
+    "fraction": 0.8,
+    "regions": "full_frame",
+    "comment": "If any raw APAPANE pixel reaches 80% of the configured ADC ceiling, immediately tilt all DM segments away, abort and save partial results. Full-frame guarding also catches unexpected light outside the three photometry boxes. Verify adc_max_adu for the active camera mode."
+  },
+  "normalization": {
+    "high_to_reference_flux_ratio": null,
+    "comment": "If the high-flux source/reference power ratio is calibrated, enter it here. High-flux maps are divided by this value and stitched to the low-flux reference inside the excluded region. Leave null to save unstitched raw high-flux maps."
+  },
+  "output_folder": "Alignment_output_individual"
+}

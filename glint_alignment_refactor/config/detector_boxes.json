@@ -1,10 +1,10 @@
 {
-  "comment": "Boxes inferred from pixel-to-wavelength 20260503 observing calibrations. Range below is 1300 to 1700 nm",
+  "comment": "Boxes inferred from pixel-to-wavelength 20260503 observing calibrations. Range below is 1300 to 1700 nm. Phot 3 changed from 154 to 155 for ease of processing.",
   "convention": "[y0, y1, x0, x1]",
   "photometry": {
     "Phot 1": [240, 246, 151, 260],
     "Phot 2": [222, 228, 152, 261],
-    "Phot 3": [203, 209, 154, 264]
+    "Phot 3": [203, 209, 155, 264]
   },
   "null": {
     "N1 / 11-31": [166, 172, 157, 266],
