@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sample chosen GLINT mount X/Y points and six GLINT-DM surface pistons.
+"""Sample chosen GLINT mount X/Y points and six simultaneous GLINT-DM surface pistons.
 
 One JSON per point contains dark-subtracted per-frame photometric column sums
 as [spectral_column, photometry_channel, piston, frame]. The camera is only
@@ -25,20 +25,31 @@ import numpy as np
 
 # ---------------------------------------------------------------------------
 # USER SETTINGS: replace these seven example absolute mount coordinates.
-# Dictionary insertion order is acquisition order; tuples are (X,Y,segment).
+# Dictionary insertion order is acquisition order.
+# Entries are (X, Y, selected_tip_mrad, selected_tilt_mrad, (segments, ...)).
+# The listed segments receive these tip/tilt values and the SAME surface-
+# piston offset together; other segments retain their SEGMENT_PTT settings.
+# Existing three-field (X, Y, segment) entries still work unchanged.
+# All listed segments receive the SAME surface-piston offset in one DM command.
+# Example: "point_01": (3060, 3670, 0.0, 0.0, (11, 20, 31)),
 # ---------------------------------------------------------------------------
-XY_POSITIONS: dict[str, tuple[int, int, int]] = {
-    "point_01": (3060, 3670, 31),
+XY_POSITIONS: dict[str, tuple[int, int, float, float, tuple[int, ...]]] = {
+    "point_01": (3060, 3670, 0.0, 0.0, (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)),
 }
+
+# (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+# (5, 6, 10, 11, 12, 17, 18)
+# (0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 13, 16, 17, 18, 19, 23, 24, 25)
 
 # Surface-piston units: lambda in nm; the mirror reflects light twice.
 WAVELENGTH_NM = 1500.0
 PISTON_FRACTIONS = (0.0, 1 / 12, 1 / 6, 1 / 4, 1 / 3, 5 / 12)
-NFRAMES = 100
+NFRAMES = 2000
 PREVIEW_NFRAMES = 10  # At the first XY position before any piston sweep.
 
-# The uploaded normal XY scan commands all 37 segments (piston,tip,tilt) as
-# (0,-5,0). Preserve that actual default. Edit individual rows as required.
+# Actual defaults below command all 37 segments (piston,tip,tilt) as (0,0,0):
+# all segments FLAT. This is NOT a tilt-away detector safeguard. Edit the
+# individual PTT rows as needed before running at high flux.
 SEGMENT_PTT: dict[int, tuple[float, float, float]] = {
     segment: (0.0, 0, 0.0) for segment in range(37)
 }
@@ -150,24 +161,51 @@ def load_photometry_boxes(path: Path) -> dict[str, tuple[int, int, int, int]]:
     return {channel: boxes[channel] for channel in ("Phot 1", "Phot 2", "Phot 3")}
 
 
-def validated_points() -> list[tuple[str, int, int, int]]:
+def validated_points() -> list[tuple[str, int, int, float | None, float | None, tuple[int, ...]]]:
     if not isinstance(XY_POSITIONS, dict) or not XY_POSITIONS:
         raise ValueError("XY_POSITIONS must be a non-empty dictionary")
-    positions: list[tuple[str, int, int, int]] = []
+    positions: list[tuple[str, int, int, float | None, float | None, tuple[int, ...]]] = []
     for name, pair in XY_POSITIONS.items():
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", name):
             raise ValueError(f"Invalid position name {name!r}; use letters, digits, _ or -")
-        if not isinstance(pair, (tuple, list)) or len(pair) != 3:
-            raise ValueError(f"XY_POSITIONS[{name!r}] must be (x,y,segment)")
-        if not all(np.isfinite(float(v)) and float(v).is_integer() for v in pair):
-            raise ValueError(f"Mount X/Y and segment must be integers at {name}")
+        if not isinstance(pair, (tuple, list)) or len(pair) not in (3, 5):
+            raise ValueError(
+                f"XY_POSITIONS[{name!r}] must be (x,y,segment_ids) or "
+                "(x,y,tip_mrad,tilt_mrad,segment_ids)"
+            )
+        if not all(np.isfinite(float(v)) and float(v).is_integer() for v in pair[:2]):
+            raise ValueError(f"Mount X/Y must be integers at {name}")
         x, y = int(pair[0]), int(pair[1])
-        segment = int(pair[2])
-        if not 0 <= segment < 37:
-            raise ValueError(f"Invalid GLINT DM segment {segment} at {name}")
+        tip_mrad: float | None = None
+        tilt_mrad: float | None = None
+        if len(pair) == 5:
+            try:
+                tip_mrad, tilt_mrad = float(pair[2]), float(pair[3])
+            except (TypeError, ValueError, OverflowError) as error:
+                raise ValueError(f"Selected tip/tilt must be finite numbers at {name}") from error
+            if not np.isfinite(tip_mrad) or not np.isfinite(tilt_mrad):
+                raise ValueError(f"Selected tip/tilt must be finite numbers at {name}")
+        selection = pair[-1]
+        selected = selection if isinstance(selection, (tuple, list)) else (selection,)
+        if not selected:
+            raise ValueError(f"No GLINT DM segments selected at {name}")
+        segments: list[int] = []
+        for value in selected:
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError, OverflowError) as error:
+                raise ValueError(f"Invalid GLINT DM segment {value!r} at {name}") from error
+            if not np.isfinite(numeric) or not numeric.is_integer():
+                raise ValueError(f"GLINT DM segments must be integer IDs at {name}")
+            segment = int(numeric)
+            if not 0 <= segment < 37:
+                raise ValueError(f"Invalid GLINT DM segment {segment} at {name}")
+            if segment in segments:
+                raise ValueError(f"Repeated GLINT DM segment {segment} at {name}")
+            segments.append(segment)
         # Different named experiments may intentionally share an XY coordinate
-        # while piston-scanning different segments (or repeating the same one).
-        positions.append((name, x, y, segment))
+        # while piston-scanning different groups (or repeating the same group).
+        positions.append((name, x, y, tip_mrad, tilt_mrad, tuple(segments)))
     if int(NFRAMES) < 1:
         raise ValueError("NFRAMES must be >= 1")
     if int(PREVIEW_NFRAMES) < 1:
@@ -195,12 +233,25 @@ def base_dm_state() -> dict[int, SegmentPTT]:
     }
 
 
+def state_for_point(
+    base: dict[int, SegmentPTT], segments: Sequence[int],
+    tip_mrad: float | None, tilt_mrad: float | None,
+) -> dict[int, SegmentPTT]:
+    """Apply per-point selected tip/tilt without changing other segments."""
+    state = {index: SegmentPTT(v.piston_um, v.tip_mrad, v.tilt_mrad) for index, v in base.items()}
+    if tip_mrad is not None and tilt_mrad is not None:
+        for segment in segments:
+            state[int(segment)].tip_mrad = tip_mrad
+            state[int(segment)].tilt_mrad = tilt_mrad
+    return state
+
+
 def state_for_piston(
-    base: dict[int, SegmentPTT], offset_um: float, segment: int
+    base: dict[int, SegmentPTT], offset_um: float, segments: Sequence[int]
 ) -> dict[int, SegmentPTT]:
     state = {index: SegmentPTT(v.piston_um, v.tip_mrad, v.tilt_mrad) for index, v in base.items()}
-    selected = state[int(segment)]
-    selected.piston_um += float(offset_um)
+    for segment in segments:
+        state[int(segment)].piston_um += float(offset_um)
     return state
 
 
@@ -309,7 +360,7 @@ def preview_figure(
     label: str,
     x: int,
     y: int,
-    segment: int,
+    segments: Sequence[int],
 ) -> None:
     """Save detector subimages and their dark-subtracted column sums."""
     import matplotlib.pyplot as plt
@@ -338,7 +389,7 @@ def preview_figure(
         axes[1, channel_index].set_xlabel("APAPANE detector X [pixel]")
         axes[1, channel_index].set_ylabel("ADU/column/frame, sum over box rows")
     figure.suptitle(
-        f"First-position pilot {label}: mount X={x}, Y={y}, piston segment {segment}; "
+        f"First-position pilot {label}: mount X={x}, Y={y}, piston segments {list(segments)}; "
         f"mean of {len(frames)} dark-subtracted APAPANE frames"
     )
     figure.savefig(path, dpi=165, facecolor="white")
@@ -396,7 +447,7 @@ def next_output_directory(root: Path) -> Path:
 def require_confirmation() -> None:
     if not sys.stdin.isatty():
         raise RuntimeError("Physical scan requires terminal YES confirmation (or --yes)")
-    if input("Confirm listed XY positions, per-point piston segments, boxes and flux. Type YES: ").strip() != "YES":
+    if input("Confirm listed XY positions, simultaneous piston segments, boxes and flux. Type YES: ").strip() != "YES":
         raise RuntimeError("Confirmation not received")
 
 
@@ -414,8 +465,11 @@ def run(args: argparse.Namespace) -> Path | None:
     guard_limit = float(ADC_MAX_ADU * SATURATION_FRACTION)
     print("Selected-position GLINT X/Y + spectral piston scan")
     print(f"  XY positions: {positions}")
-    print(f"  per-point piston segments: {[seg for _, _, _, seg in positions]}; "
+    print(f"  selected tip/tilt/segments per point: "
+          f"{[(tip, tilt, list(segs)) for _, _, _, tip, tilt, segs in positions]}; "
           f"wavelength: {WAVELENGTH_NM:g} nm")
+    if all(row[1:] == (0, 0.0) for row in SEGMENT_PTT.values()):
+        print("  WARNING: all GLINT DM segments have zero tip/tilt (all-flat base map).")
     print(f"  surface-piston offsets in µm: {[round(v, 6) for v in offsets]}")
     print(f"  reflected phases in degrees: {[round(720 * v, 3) for v in PISTON_FRACTIONS]}")
     print(f"  frames / piston / position: {NFRAMES}")
@@ -515,7 +569,7 @@ def run(args: argparse.Namespace) -> Path | None:
     try:
         hardware = InstrumentHardware(instrument)
         limits = hardware.mount_limits()
-        for label, x, y, segment in positions:
+        for label, x, y, tip_mrad, tilt_mrad, segments in positions:
             for axis, value in (("x", x), ("y", y)):
                 low, high = map(float, limits[axis])
                 if not low <= value <= high:
@@ -526,7 +580,7 @@ def run(args: argparse.Namespace) -> Path | None:
         if round(before_mount["roll"]) != round(fixed_roll):
             hardware.move_mount({"roll": fixed_roll}, timeout)
         previous_xy: tuple[int, int] | None = None
-        for point_index, (label, x, y, segment) in enumerate(positions, start=1):
+        for point_index, (label, x, y, tip_mrad, tilt_mrad, segments) in enumerate(positions, start=1):
             record_state(base, "base_state_for_transit")
             refresh_if_due()
             targets = {axis: float(value) for axis, value in (("x", x), ("y", y))
@@ -535,6 +589,9 @@ def run(args: argparse.Namespace) -> Path | None:
                 hardware.move_mount(targets, timeout)
             previous_xy = (x, y)
             time.sleep(SETTLE_S)
+            point_base = state_for_point(base, segments, tip_mrad, tilt_mrad)
+            record_state(point_base, "point_selected_tip_tilt_before_preview")
+            time.sleep(PISTON_SETTLE_S)
             if point_index == 1:
                 verify_state()
                 pilot_frames, pilot_max = acquire_guarded_frames(
@@ -544,17 +601,17 @@ def run(args: argparse.Namespace) -> Path | None:
                 pilot_path = output_dir / "first_position_photometry_preview.png"
                 preview_figure(
                     pilot_path, pilot_frames, dark, boxes,
-                    label=label, x=x, y=y, segment=segment,
+                    label=label, x=x, y=y, segments=segments,
                 )
                 preview_confirmation(
                     pilot_path, pilot_max,
-                    lambda: record_state(base, "preview_pause_keepalive"),
+                    lambda: record_state(point_base, "preview_pause_keepalive"),
                 )
-                record_state(base, "post_preview_base_state")
+                record_state(point_base, "post_preview_point_state")
             current_json = output_dir / f"{label}.json"
             current_cube = np.full((max_width, len(channels), len(offsets), int(NFRAMES)), np.nan)
             current_payload = {
-                "schema_version": 1,
+                "schema_version": 1 if len(segments) == 1 else 2,
                 "kind": "normal_xy_spectral_piston",
                 "status": "running",
                 "position_name": label,
@@ -574,10 +631,20 @@ def run(args: argparse.Namespace) -> Path | None:
                 "missing_value": None,
                 "spectral_definition": "sum over the dark-subtracted rows of each photometry box, per column per frame",
                 "wavelength_nm": float(WAVELENGTH_NM),
-                "piston_segment": segment,
+                "selected_segments_tip_mrad": tip_mrad,
+                "selected_segments_tilt_mrad": tilt_mrad,
+                "piston_segment": segments[0] if len(segments) == 1 else None,
+                "piston_segments": list(segments),
                 "piston_fractions_of_wavelength": [float(v) for v in PISTON_FRACTIONS],
                 "piston_offsets_surface_um": offsets,
-                "piston_command_surface_um": [base[segment].piston_um + v for v in offsets],
+                "piston_command_surface_um": (
+                    [point_base[segments[0]].piston_um + v for v in offsets]
+                    if len(segments) == 1 else None
+                ),
+                "piston_commands_surface_um_by_segment": {
+                    str(segment): [point_base[segment].piston_um + v for v in offsets]
+                    for segment in segments
+                },
                 "reflected_relative_phase_deg": [720 * float(v) for v in PISTON_FRACTIONS],
                 "pistons_completed": 0,
                 "frames_per_piston": int(NFRAMES),
@@ -585,6 +652,7 @@ def run(args: argparse.Namespace) -> Path | None:
                 "dark": {"file": str(dark_path), "sha256": sha256(dark_path), "subtracted_per_frame": True},
                 "adc_guard_limit_adu": guard_limit,
                 "base_dm_ptt": dm_state_to_dict(base),
+                "point_dm_ptt_before_piston": dm_state_to_dict(point_base),
             }
             if point_index == 1:
                 current_payload["first_position_preview"] = {
@@ -595,7 +663,7 @@ def run(args: argparse.Namespace) -> Path | None:
                 }
             for piston_index, offset in enumerate(offsets):
                 refresh_if_due()
-                requested = state_for_piston(base, offset, segment)
+                requested = state_for_piston(point_base, offset, segments)
                 record_state(requested, f"piston_{piston_index}")
                 time.sleep(PISTON_SETTLE_S)
                 verify_state()
@@ -609,7 +677,8 @@ def run(args: argparse.Namespace) -> Path | None:
                 current_payload["per_piston_raw_max_adu"][piston_index] = raw_max
                 current_payload["pistons_completed"] = piston_index + 1
                 persist_current("running")  # Checkpoint after every piston.
-                print(f"  [{point_index}/{len(positions)}] {label} X={x},Y={y},segment={segment}; "
+                print(f"  [{point_index}/{len(positions)}] {label} X={x},Y={y},"
+                      f"tip={tip_mrad},tilt={tilt_mrad},segments={list(segments)}; "
                       f"piston {piston_index+1}/{len(offsets)}; raw max={raw_max:g} ADU")
             record_state(base, "base_state_after_point")
             persist_current("completed")
