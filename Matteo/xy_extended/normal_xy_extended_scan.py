@@ -33,10 +33,15 @@ import numpy as np
 # Absolute GLINT mount positions.  The defaults are a 300 x 300 extension of
 # the latest normal 06_xy scan (3000..3100, 3420..3520), centred near the same
 # measured injection location.  All endpoints are included.
-X_START = 2700.0
-X_STOP = 3300.0
-Y_START = 3200.0
-Y_STOP = 3700.0
+# X_START = 2700.0
+# X_STOP = 3300.0
+# Y_START = 3200.0
+# Y_STOP = 3700.0
+
+X_START = 2800.0
+X_STOP = 2900.0
+Y_START = 3450
+Y_STOP = 3550
 XY_STEP = 5.0
 
 # Number of distinct APAPANE frames acquired at every mount position.
