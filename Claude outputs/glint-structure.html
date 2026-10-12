@@ -1,0 +1,627 @@
+<title>GLINT Structure</title>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+/* === TOKENS — telescope/optics palette === */
+:root {
+  --bg: #f0f4f9;
+  --surface: #ffffff;
+  --surface2: #f7f9fc;
+  --fg: #1a2535;
+  --fg-muted: #5d748a;
+  --border: #dde5ef;
+  --hover: #eaf0f7;
+  --selected: #dbeafe;
+  --selected-l: #3b82f6;
+
+  --layer-root:    #5d748a;
+  --layer-config:  #0369a1;
+  --layer-cal:     #92400e;
+  --layer-src:     #0f766e;
+  --layer-gui:     #6d28d9;
+  --layer-hw:      #1d4ed8;
+  --layer-helper:  #7c3aed;
+  --layer-test:    #4338ca;
+  --layer-archive: #be123c;
+
+  --sug-fg:  #065f46; --sug-bg: #d1fae5;
+  --note-fg: #92400e; --note-bg: #fef3c7;
+
+  --mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a1520;
+    --surface: #101d2e;
+    --surface2: #0d1828;
+    --fg: #dce8f2;
+    --fg-muted: #7a9ab5;
+    --border: #1b2d41;
+    --hover: #141f2e;
+    --selected: #0c2444;
+    --selected-l: #60a5fa;
+
+    --layer-root:    #7a9ab5;
+    --layer-config:  #38bdf8;
+    --layer-cal:     #fbbf24;
+    --layer-src:     #2dd4bf;
+    --layer-gui:     #a78bfa;
+    --layer-hw:      #60a5fa;
+    --layer-helper:  #c084fc;
+    --layer-test:    #818cf8;
+    --layer-archive: #fb7185;
+
+    --sug-fg:  #6ee7b7; --sug-bg: #064e3b;
+    --note-fg: #fcd34d; --note-bg: #3d1600;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a1520; --surface: #101d2e; --surface2: #0d1828;
+  --fg: #dce8f2; --fg-muted: #7a9ab5; --border: #1b2d41;
+  --hover: #141f2e; --selected: #0c2444; --selected-l: #60a5fa;
+  --layer-root: #7a9ab5; --layer-config: #38bdf8; --layer-cal: #fbbf24;
+  --layer-src: #2dd4bf; --layer-gui: #a78bfa; --layer-hw: #60a5fa;
+  --layer-helper: #c084fc; --layer-test: #818cf8; --layer-archive: #fb7185;
+  --sug-fg: #6ee7b7; --sug-bg: #064e3b; --note-fg: #fcd34d; --note-bg: #3d1600;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* HEADER */
+.hdr {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  flex-shrink: 0;
+}
+.hdr-top { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.hdr h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.hdr-sub { font-size: 12px; color: var(--fg-muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.leg { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fg-muted); }
+.leg-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+/* MAIN LAYOUT */
+.main { flex: 1; display: flex; overflow: hidden; }
+
+.tree-panel {
+  width: 50%; min-width: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 8px 0 16px;
+}
+
+.detail-panel {
+  width: 50%; min-width: 0;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--surface2);
+}
+
+/* TREE ROWS */
+.t-item { display: block; }
+
+.t-row {
+  display: flex; align-items: center;
+  gap: 5px; padding: 2px 12px 2px 0;
+  border-left: 2px solid transparent;
+  cursor: pointer; user-select: none;
+  min-height: 24px;
+}
+.t-row:hover { background: var(--hover); }
+.t-row.sel { background: var(--selected); border-left-color: var(--selected-l); }
+
+.t-chev {
+  width: 14px; height: 14px; flex-shrink: 0;
+  color: var(--fg-muted); display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s; font-size: 9px;
+}
+.t-chev.open { transform: rotate(90deg); }
+.t-chev-blank { width: 14px; flex-shrink: 0; }
+
+.t-icon { font-size: 12px; flex-shrink: 0; width: 16px; text-align: center; }
+
+.t-name {
+  font-family: var(--mono); font-size: 12px;
+  color: var(--fg); flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.t-name.is-dir { font-weight: 500; }
+
+.t-badge {
+  font-size: 9px; font-weight: 700;
+  padding: 1px 4px; border-radius: 3px;
+  flex-shrink: 0; letter-spacing: 0.04em;
+}
+.b-sug { color: var(--sug-fg); background: var(--sug-bg); }
+.b-note { color: var(--note-fg); background: var(--note-bg); }
+
+.t-kids { display: none; }
+.t-kids.open { display: block; }
+
+/* DETAIL PANEL */
+.d-empty {
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--fg-muted); text-align: center; gap: 10px;
+}
+.d-empty svg { opacity: 0.2; }
+.d-empty p { font-size: 13px; max-width: 200px; line-height: 1.5; }
+
+.d-path {
+  font-family: var(--mono); font-size: 13px; font-weight: 500;
+  word-break: break-all; margin-bottom: 6px;
+}
+.d-typebadge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 600;
+  padding: 2px 8px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: 18px;
+}
+.d-sec { margin-bottom: 16px; }
+.d-label {
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--fg-muted); margin-bottom: 6px;
+}
+.d-desc { font-size: 13px; line-height: 1.65; color: var(--fg); }
+
+.d-sug {
+  background: var(--sug-bg); color: var(--sug-fg);
+  border-radius: 6px; padding: 10px 12px;
+  font-size: 12.5px; line-height: 1.55;
+}
+.d-note {
+  background: var(--note-bg); color: var(--note-fg);
+  border-radius: 6px; padding: 10px 12px;
+  font-size: 12.5px; line-height: 1.55;
+}
+.d-hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+.d-kids {
+  font-family: var(--mono); font-size: 11.5px;
+  color: var(--fg-muted); line-height: 1.9;
+}
+
+/* ARCH LAYERS (welcome view) */
+.arch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.arch-row {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px;
+  display: flex; align-items: flex-start; gap: 8px;
+}
+.arch-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.arch-text strong { display: block; font-size: 12px; font-weight: 600; margin-bottom: 1px; }
+.arch-text span { font-size: 11px; color: var(--fg-muted); }
+
+@media (max-width: 640px) {
+  body { overflow: auto; }
+  .main { flex-direction: column; overflow: visible; }
+  .tree-panel { width: 100%; border-right: none; border-bottom: 1px solid var(--border); max-height: 55vh; overflow-y: auto; }
+  .detail-panel { width: 100%; }
+  .arch { grid-template-columns: 1fr; }
+}
+</style>
+
+<header class="hdr">
+  <div class="hdr-top">
+    <h1>GLINT — Proposed Structure</h1>
+    <span class="hdr-sub">Click any item to see details · ⚡ suggestion · ? your annotation</span>
+  </div>
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:var(--layer-config)"></div>Config</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--layer-cal)"></div>Calibrations</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--layer-src)"></div>Source (core)</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--layer-gui)"></div>GUI</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--layer-hw)"></div>Hardware</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--layer-helper)"></div>Scripts / Examples</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--layer-test)"></div>Tests / Docs</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--layer-archive)"></div>Archive</div>
+  </div>
+</header>
+
+<div class="main">
+  <div class="tree-panel" id="tree"></div>
+  <div class="detail-panel" id="detail">
+    <div class="d-empty">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+        <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+      </svg>
+      <p>Select any file or folder to see what it does</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const TREE = {
+  id:"root", name:"GLINT/", type:"dir", layer:"src", open:true,
+  desc:"Repository root. The restructure separates configuration, calibrations, source code, scripts, and legacy code into clearly named top-level folders.",
+  children:[
+    {id:"readme", name:"README.md", type:"file", layer:"root",
+     desc:"Project overview: what GLINT is, how to install it, simulator quick-start, and common commands. The first thing any newcomer reads."},
+    {id:"pyproject", name:"pyproject.toml", type:"file", layer:"root",
+     desc:"Defines the glint package for pip install, its dependencies, test configuration, and CLI entry points (the 'glint' command). An evolution of the existing pyproject.toml.",
+     suggestion:"The repo already has a pyproject.toml — this is not a rewrite, just an expansion as the package grows."},
+
+    {id:"config", name:"config/", type:"dir", layer:"config", open:false,
+     desc:"All configuration lives in one place. No config buried inside source files. You select which JSON to use at launch time.",
+     children:[
+       {id:"cfg-inst", name:"instrument.json", type:"file", layer:"config",
+        desc:"Full physical instrument config: device addresses, SHM names, motor limits, output paths, workflow stages, scan defaults, and paths to calibration files. Used on the real bench at Subaru."},
+       {id:"cfg-sim", name:"simulator.json", type:"file", layer:"config",
+        desc:"Same structure as instrument.json but with synthetic hardware. Safe to run anywhere — no telescope libraries needed."},
+       {id:"cfg-start", name:"bench_startup.json", type:"file", layer:"config",
+        desc:"Controls bench startup: which tmux sessions to open, which camera processes to start, health checks, and the GUI launch command."}
+     ]},
+
+    {id:"cals", name:"calibrations/", type:"dir", layer:"cal", open:false,
+     desc:"Static calibration files used by the instrument. Structured by hardware device.",
+     suggestion:"Binary files (.npy) and large text calibrations shouldn't be committed to git without care. Recommend: add calibrations/.gitignore to exclude *.npy and large *.txt files, and document the real file locations (shared network path at Subaru/AAO) in a calibrations/README.",
+     children:[
+       {id:"cal-ap", name:"apapane/", type:"dir", layer:"cal",
+        children:[
+          {id:"cal-boxes", name:"detector_boxes.json", type:"file", layer:"cal",
+           desc:"Pixel extraction boxes for photometric, null, and fringe tracking channels.",
+           note:"You noted: use glint-extractor package. Worth confirming whether this JSON is generated by glint-extractor or consumed by it — that determines whether it lives here or is a build artefact."},
+          {id:"cal-wav", name:"pixel_to_wavelength.json", type:"file", layer:"cal",
+           desc:"Pixel-to-wavelength calibration for each detector channel."}
+        ]},
+       {id:"cal-cx", name:"conex/", type:"dir", layer:"cal",
+        children:[
+          {id:"cal-matrix", name:"glint_steering2_response_matrix.npy", type:"file", layer:"cal",
+           desc:"Validated 2×2 response matrix mapping Conex commands to focal image position.",
+           note:"Binary .npy file.",
+           suggestion:"Add to .gitignore or track via git-lfs. Document where this file lives on the network in calibrations/README."}
+        ]},
+       {id:"cal-inst", name:"instrument/", type:"dir", layer:"cal",
+        children:[
+          {id:"cal-dm", name:"dm/", type:"dir", layer:"cal",
+           children:[
+             {id:"cal-flat", name:"32AW038_1500nm.txt", type:"file", layer:"cal",
+              desc:"Physical DM flat-voltage calibration file for actuator 32AW038 at 1500 nm.",
+              note:"Large data file — same concern as the .npy.",
+              suggestion:"Store externally or via git-lfs. Reference its path from instrument.json so it's loaded at runtime, not committed."}
+           ]}
+        ]},
+       {id:"cal-sim", name:"simulator/", type:"dir", layer:"cal",
+        desc:"Optional simulator-only calibration overrides. Empty when the simulator uses the shared calibrations."}
+     ]},
+
+    {id:"src", name:"src/", type:"dir", layer:"src", open:true,
+     desc:"Standard Python package layout. Putting the package under src/ prevents accidental imports from the repo root when running Python from the top-level directory.",
+     children:[
+       {id:"glint", name:"glint/", type:"dir", layer:"src", open:true,
+        desc:"The main Python package. Everything importable as 'glint.*' lives here. Five subpackages handle calibration loading, scan logic, the GUI, hardware drivers, and bench startup.",
+        children:[
+          {id:"init", name:"__init__.py", type:"file", layer:"src",
+           desc:"Makes 'glint' a Python package. Kept deliberately minimal — just a version string and a small public API.",
+           note:"You asked what this is. Every Python package folder needs an __init__.py — it's what makes the folder importable. Think of it as the front door. You only put things here that you want importable as 'from glint import X' directly. Everything else stays in its own module. Keep it to ~5 lines.",
+           suggestion:"Contents should be: __version__ = '0.1.0' and at most two or three imports. Check what the current __init__.py exposes and trim aggressively."},
+          {id:"cli", name:"cli.py", type:"file", layer:"src",
+           desc:"The 'glint' command you type in a terminal. Dispatches subcommands: 'glint gui' starts the GUI, 'glint scan pitch-yaw' runs one scan headlessly, 'glint bench-startup' brings up the bench.",
+           note:"You asked what this looks like. It's a short file using Python's argparse. It doesn't implement anything itself — it just routes to the right module. Running 'glint gui' imports glint.gui.app and calls run(). No hardware access here."},
+          {id:"config_py", name:"config.py", type:"file", layer:"src",
+           desc:"Loads and validates the selected configuration JSON (instrument.json or simulator.json). Makes validated config available to the rest of the app. Fails early with a clear error if anything is missing or malformed."},
+          {id:"models", name:"models.py", type:"file", layer:"src",
+           desc:"Shared data containers used across the whole codebase: ScanRequest, ScanResult, ScanProgress, SystemSnapshot, EngineState, ReviewDecision. No hardware, no GUI, no file I/O — just data shapes.",
+           note:"You asked what this is. Instead of passing raw dicts between functions (fragile — typos, wrong keys), you define named containers here using Python dataclasses. ScanResult has fields 'data', 'parameters', 'timestamp'. Every module imports from here. It's the common language of the codebase.",
+           suggestion:"Use Python dataclasses. They're readable, have type hints, and work well with the existing codebase style."},
+          {id:"runtime", name:"runtime.py", type:"file", layer:"src",
+           desc:"Application lifecycle manager — the wiring. Assembles all pieces at startup (config, calibrations, hardware or simulator, storage, engine) and tears them down cleanly on exit. Other modules don't construct each other — runtime.py does it."},
+
+          {id:"cal-pkg", name:"calibration/", type:"dir", layer:"src",
+           desc:"Subpackage for loading and validating all calibration files. Returns a single CalibrationBundle to the runtime.",
+           children:[
+             {id:"cp-init", name:"__init__.py", type:"file", layer:"src", desc:"Exposes public calibration types."},
+             {id:"cp-repo", name:"repository.py", type:"file", layer:"src", desc:"Central loader. Reads paths from config, calls specific loaders, validates files, caches loaded data, records hashes, and returns a CalibrationBundle to runtime.py."},
+             {id:"cp-models", name:"models.py", type:"file", layer:"src", desc:"Data containers: CalibrationBundle, DetectorBoxes, WavelengthSolution, ConexResponseMatrix."},
+             {id:"cp-det", name:"detector_boxes.py", type:"file", layer:"src", desc:"Loads and validates detector extraction box coordinates from detector_boxes.json."},
+             {id:"cp-wav", name:"wavelength.py", type:"file", layer:"src", desc:"Loads and applies the pixel-to-wavelength calibration."},
+             {id:"cp-cx", name:"conex.py", type:"file", layer:"src", desc:"Loads and validates the Conex 2×2 response matrix."},
+             {id:"cp-dm", name:"dm.py", type:"file", layer:"src", desc:"Loads DM flat-voltage and related calibrations."}
+           ]},
+
+          {id:"al-pkg", name:"alignment_scans/", type:"dir", layer:"src",
+           desc:"All alignment scan logic. Each scan type is its own file. The engine and registry tie them together without them knowing about each other.",
+           children:[
+             {id:"al-init", name:"__init__.py", type:"file", layer:"src", desc:"Package marker. Hardware is not connected on import."},
+             {id:"al-main", name:"__main__.py", type:"file", layer:"src", desc:"Enables 'python -m glint.alignment_scans pitch-yaw' — run a scan from the terminal without the GUI."},
+             {id:"al-cli", name:"cli.py", type:"file", layer:"src", desc:"Argument parsing for standalone scan invocation from the terminal. Creates runtime, calls engine."},
+             {id:"al-reg", name:"registry.py", type:"file", layer:"src", desc:"Catalogue of all scans. Maps stable names ('pitch-yaw', 'xy') to their implementation file, parameter type, required hardware, and required calibrations. Does not execute anything — just a lookup table."},
+             {id:"al-eng", name:"engine.py", type:"file", layer:"src", desc:"Scan lifecycle manager. Validates requests, runs the scan, handles progress updates, cancellation, failure recovery, and Apply/Redo/Restore logic. Independent of the GUI — the GUI calls this, not the other way around."},
+             {id:"al-can", name:"cancellation.py", type:"file", layer:"src", desc:"Thread-safe token a running scan checks at safe points so it can be aborted cleanly mid-scan."},
+             {id:"al-an", name:"analysis.py", type:"file", layer:"src", desc:"Shared fitting functions: Gaussian, centroid, surface fitting, null envelope. Used by multiple scan types so they're not duplicated."},
+             {id:"al-fd", name:"focal_dark.py", type:"file", layer:"src", desc:"Acquires and validates the focal camera dark frame."},
+             {id:"al-ad", name:"apapane_dark.py", type:"file", layer:"src", desc:"Acquires and validates the APAPANE dark frame."},
+             {id:"al-bulk", name:"bulk_alignment.py", type:"file", layer:"src", desc:"Aligns the focal PSF using the Conex response matrix."},
+             {id:"al-sz", name:"set_z.py", type:"file", layer:"src", desc:"Validates and recommends an absolute mount Z position."},
+             {id:"al-zscan", name:"z_scan.py", type:"file", layer:"src",
+              desc:"True Z raster scan for when a full Z sweep is needed.",
+              note:"You noted this should move to helper_scripts.",
+              suggestion:"If z_scan is only ever run manually as a diagnostic rather than as a standard workflow step, move it to helper_scripts/. It can still call into the alignment_scans engine — it just won't be registered as a normal workflow scan."},
+             {id:"al-py", name:"pitch_yaw.py", type:"file", layer:"src", desc:"Pitch/yaw raster scan and photometric map analysis. Recommends best pitch/yaw for chip coupling."},
+             {id:"al-xy", name:"xy.py", type:"file", layer:"src", desc:"Mount X/Y raster scan. Recommends best centring position."},
+             {id:"al-tt", name:"tip_tilt.py", type:"file", layer:"src", desc:"Scans injected DM segments in tip and tilt."},
+             {id:"al-np", name:"null_piston.py", type:"file", layer:"src", desc:"Scans baseline pistons and calculates a common piston state for nulling."},
+             {id:"al-stor", name:"storage.py", type:"file", layer:"src", desc:"Saves scan arrays, metadata, plots, calibration hashes, review decisions, and applied/restored state to disk."}
+           ]},
+
+          {id:"gui-pkg", name:"gui/", type:"dir", layer:"gui",
+           desc:"Everything GUI-related. Currently Tkinter; flagged for migration to PyQt6. The GUI calls the engine — the engine never calls the GUI back. Clear separation.",
+           children:[
+             {id:"gui-init", name:"__init__.py", type:"file", layer:"gui", desc:"GUI package marker. Importing does not start the application."},
+             {id:"gui-main", name:"__main__.py", type:"file", layer:"gui", desc:"Enables 'python -m glint.gui' to launch the GUI."},
+             {id:"gui-app", name:"app.py", type:"file", layer:"gui", desc:"Creates the root window, runtime, controller, and main views, then starts the event loop. Entry point for the GUI."},
+             {id:"gui-ctrl", name:"controller.py", type:"file", layer:"gui",
+              desc:"Replaces the event-handling part of legacy signals.py. Receives button callbacks from views, constructs scan requests, starts worker tasks, handles results and errors, and tells views what to display. Does not implement scan algorithms or command devices.",
+              suggestion:"Most of the GUI migration work maps here. Find what currently lives in signals.py and route it through this controller pattern."},
+             {id:"gui-wf", name:"workflow.py", type:"file", layer:"gui", desc:"Tracks the full alignment procedure: which steps are not-started, active, awaiting-review, complete, skipped, or failed. Does not run scans."},
+             {id:"gui-wkr", name:"worker.py", type:"file", layer:"gui", desc:"Runs engine operations in a background thread so the GUI stays responsive. Returns progress, completion, and error events to the controller."},
+             {id:"gui-plt", name:"plotting.py", type:"file", layer:"gui", desc:"Produces figures from ScanResult objects. No hardware access, no state changes."},
+             {id:"gui-views", name:"views/", type:"dir", layer:"gui",
+              desc:"Persistent screens in the main window. Each is its own file.",
+              children:[
+                {id:"v-mw", name:"main_window.py", type:"file", layer:"gui", desc:"Main window layout, menus, and top-level navigation."},
+                {id:"v-db", name:"dashboard_view.py", type:"file", layer:"gui", desc:"Main alignment dashboard and system state summary."},
+                {id:"v-wf", name:"workflow_view.py", type:"file", layer:"gui", desc:"Alignment stages and their current statuses."},
+                {id:"v-sp", name:"scan_parameters_view.py", type:"file", layer:"gui", desc:"Collects parameters for the selected scan before it runs."},
+                {id:"v-prog", name:"scan_progress_view.py", type:"file", layer:"gui", desc:"Current step, progress bar, and the Abort button during a running scan."},
+                {id:"v-rev", name:"scan_review_view.py", type:"file", layer:"gui", desc:"Completed scan results and plots. Apply, Redo, and Restore buttons. Emits neutral callbacks — controller.py decides what they mean."},
+                {id:"v-mnt", name:"mount_control_view.py", type:"file", layer:"gui", desc:"Six-axis mount position readback and manual jog controls."},
+                {id:"v-dm", name:"dm_control_view.py", type:"file", layer:"gui", desc:"DM state display, segment selection, and preset controls."},
+                {id:"v-cam", name:"camera_view.py", type:"file", layer:"gui", desc:"Camera display and manual frame acquisition."},
+                {id:"v-null", name:"null_live_view.py", type:"file", layer:"gui", desc:"Live null fringe display using detector extraction boxes and wavelength calibration."},
+                {id:"v-stat", name:"status_view.py", type:"file", layer:"gui", desc:"Connection state, simulator/instrument mode, and warnings."}
+              ]},
+             {id:"gui-dlg", name:"dialogs/", type:"dir", layer:"gui",
+              desc:"Pop-up windows for focused questions.",
+              children:[
+                {id:"d-conf", name:"confirmation_dialog.py", type:"file", layer:"gui", desc:"Confirms guarded actions like Restore."},
+                {id:"d-cfg", name:"configuration_dialog.py", type:"file", layer:"gui", desc:"Selects or shows the active config file."},
+                {id:"d-cx", name:"connection_dialog.py", type:"file", layer:"gui", desc:"Hardware connection failures and retry options."},
+                {id:"d-cal", name:"calibration_info_dialog.py", type:"file", layer:"gui", desc:"Loaded calibration paths, metadata, and hashes."},
+                {id:"d-err", name:"error_dialog.py", type:"file", layer:"gui", desc:"Detailed operational errors shown to the operator."},
+                {id:"d-abt", name:"about_dialog.py", type:"file", layer:"gui", desc:"Software version and build information."}
+              ]},
+             {id:"gui-wgt", name:"widgets/", type:"dir", layer:"gui",
+              desc:"Reusable UI components used across multiple views.",
+              children:[
+                {id:"w-si", name:"status_indicator.py", type:"file", layer:"gui", desc:"Reusable connected/warning/error status light."},
+                {id:"w-ve", name:"validated_entry.py", type:"file", layer:"gui", desc:"Numeric input with range and unit validation."}
+              ]}
+           ]},
+
+          {id:"hw-pkg", name:"hardware/", type:"dir", layer:"hw",
+           desc:"Hardware abstraction. The instrument and simulator expose exactly the same interface (base.py), so the engine and GUI don't know or care which is running.",
+           children:[
+             {id:"hw-init", name:"__init__.py", type:"file", layer:"hw", desc:"Package marker. No devices connected on import."},
+             {id:"hw-base", name:"base.py", type:"file", layer:"hw", desc:"Abstract interface (AlignmentHardware): camera acquire, mount move/read, DM set/read, steering mirror command, system snapshot. Both instrument.py and simulator.py implement this."},
+             {id:"hw-fact", name:"factory.py", type:"file", layer:"hw", desc:"Creates InstrumentHardware or SimulatedHardware from the run mode. Physical driver imports are lazy so simulator mode works without telescope libraries."},
+             {id:"hw-inst", name:"instrument.py", type:"file", layer:"hw", desc:"Composes the real cameras, mount, DM, and steering drivers into the AlignmentHardware interface."},
+             {id:"hw-sim", name:"simulator.py", type:"file", layer:"hw", desc:"Synthetic implementation of the same interface. Generates fake images, responds to moves. Safe to run anywhere."},
+             {id:"hw-log", name:"command_log.py", type:"file", layer:"hw", desc:"Persistent audit log for mount, DM, and Conex commands. Useful for debugging unexpected moves."},
+             {id:"hw-drv", name:"drivers/", type:"dir", layer:"hw",
+              desc:"Low-level device drivers. Each file talks to exactly one physical device.",
+              children:[
+                {id:"d-cam", name:"cameras.py", type:"file", layer:"hw", desc:"SHM attachment and frame acquisition for APAPANE and focal cameras."},
+                {id:"d-dm", name:"dm.py", type:"file", layer:"hw", desc:"Physical DM voltage writes and verification via dmptt/dmvolt."},
+                {id:"d-mnt", name:"suruga_mount.py", type:"file", layer:"hw", desc:"Suruga serial commands, motor limits, and move completion checks."},
+                {id:"d-str", name:"steering_mirrors.py", type:"file", layer:"hw", desc:"Physical Conex / glint_steering commands and readback."}
+              ]}
+           ]},
+
+          {id:"bs-pkg", name:"bench_startup/", type:"dir", layer:"src",
+           desc:"Bench startup automation. Reads bench_startup.json and brings up the full GLINT environment in the right order.",
+           children:[
+             {id:"bs-init", name:"__init__.py", type:"file", layer:"src", desc:"Package marker."},
+             {id:"bs-cli", name:"cli.py", type:"file", layer:"src", desc:"Entry point for restore, check-only, and dry-run startup."},
+             {id:"bs-sup", name:"supervisor.py", type:"file", layer:"src", desc:"Coordinates health checks, service restoration, and GUI launch in sequence."},
+             {id:"bs-cam", name:"camera_service.py", type:"file", layer:"src", desc:"Starts, checks, and monitors configured camera services."},
+             {id:"bs-tmux", name:"tmux.py", type:"file", layer:"src", desc:"Manages explicitly configured GLINT tmux sessions."},
+             {id:"bs-win", name:"window_manager.py", type:"file", layer:"src", desc:"Opens and positions the GUI, viewers, and approved terminals."}
+           ]}
+        ]}
+     ]},
+
+    {id:"helper", name:"helper_scripts/", type:"dir", layer:"helper",
+     desc:"Standalone utility scripts. Run manually when needed. Not imported by src/. Nothing here should be required for normal instrument operation.",
+     children:[
+       {id:"hs-zg", name:"make_z_scan_gif.py", type:"file", layer:"helper", desc:"Converts an existing Z-scan dataset into an animation."},
+       {id:"hs-ins", name:"inspect_scan.py", type:"file", layer:"helper", desc:"Prints metadata and result summaries from a saved scan file."},
+       {id:"hs-null", name:"plot_null_scan.py", type:"file", layer:"helper", desc:"Replots a previously acquired null scan."},
+       {id:"hs-seg", name:"make_segment_mosaic.py", type:"file", layer:"helper", desc:"Creates a visual mosaic from existing segment scans."}
+     ]},
+
+    {id:"examples", name:"examples/", type:"dir", layer:"helper",
+     desc:"Safe newcomer examples. Run these first to understand GLINT without risk of moving hardware.",
+     children:[
+       {id:"ex-gui", name:"run_simulated_gui.py", type:"file", layer:"helper", desc:"Starts the full GUI in simulator mode. Cannot move physical hardware. Start here if you're new."},
+       {id:"ex-scan", name:"run_single_simulated_scan.py", type:"file", layer:"helper", desc:"Shows how to construct a runtime and run one scan programmatically."},
+       {id:"ex-read", name:"read_scan_result.py", type:"file", layer:"helper", desc:"Shows how to read saved scan products from disk."},
+       {id:"ex-hw", name:"hardware/", type:"dir", layer:"helper", desc:"Physical hardware examples. Clearly labelled — require explicit setup and a real bench connection. Cannot run by accident."}
+     ]},
+
+    {id:"experiments", name:"experiments/", type:"dir", layer:"root",
+     desc:"Research, characterisation, and one-off experimental code. The existing experiments/ folder maps here directly. Nothing in src/ imports from this directory — it's a sandbox.",
+     suggestion:"Current experiments/ content moves here as-is. Review what's in there — some may be worth promoting to helper_scripts/ once it's cleaned up."},
+
+    {id:"tests", name:"tests/", type:"dir", layer:"test",
+     desc:"Test suite. Four tiers so you can run fast tests without hardware present.",
+     children:[
+       {id:"t-unit", name:"unit/", type:"dir", layer:"test", desc:"Fast tests for config loading, data models, scan registry, analysis functions, and calibration logic. No hardware needed. Run these constantly."},
+       {id:"t-int", name:"integration/", type:"dir", layer:"test", desc:"Runtime, engine, storage, controller, and CLI integration tests. Uses the simulator — no bench needed."},
+       {id:"t-sim", name:"simulator/", type:"dir", layer:"test", desc:"Full simulated GUI and end-to-end workflow tests."},
+       {id:"t-hw", name:"hardware/", type:"dir", layer:"test", desc:"Manual tests that need the physical bench. Excluded from normal CI — run deliberately on the mountain."}
+     ]},
+
+    {id:"docs", name:"docs/", type:"dir", layer:"test",
+     desc:"Architecture overview, operator guide, developer guide, and telescope installation notes. Written so a newcomer (or returning telescope staff) can get started."},
+
+    {id:"archive", name:"archive/", type:"dir", layer:"archive",
+     desc:"Legacy code kept temporarily for feature comparison. Nothing in src/ imports from here.",
+     suggestion:"Three current folders go here: _codearchive/, Matteo/, and glint_alignment_refactor/. Keep them as separate subdirectories inside archive/ so you know what's what. Review and delete once the new structure covers their functionality."}
+  ]
+};
+
+const LAYER_LABELS = {
+  root:"Root", config:"Config", cal:"Calibrations", src:"Source",
+  gui:"GUI", hw:"Hardware", helper:"Scripts", test:"Tests/Docs", archive:"Archive"
+};
+
+let selId = null;
+
+function icon(n) {
+  if (n.type==="dir") {
+    if (/gui|views|dialogs|widgets/.test(n.name)) return "🖼";
+    if (/hardware|drivers/.test(n.name)) return "⚙️";
+    if (/calibration/.test(n.name) && n.id!=="cals") return "📐";
+    if (n.id==="cals") return "📐";
+    if (/alignment|scans/.test(n.name)) return "🔭";
+    if (/config/.test(n.name)) return "⚙️";
+    if (/test/.test(n.name)) return "🧪";
+    if (/archive/.test(n.name)) return "📦";
+    if (/example/.test(n.name)) return "📖";
+    if (/helper|script/.test(n.name)) return "🛠";
+    if (/docs/.test(n.name)) return "📚";
+    if (/bench_startup/.test(n.name)) return "🚀";
+    return "📁";
+  }
+  if (n.name.endsWith(".py")) return "🐍";
+  if (n.name.endsWith(".json")) return "{}";
+  if (n.name.endsWith(".toml")) return "⚙️";
+  if (n.name.endsWith(".md")) return "📄";
+  if (n.name.endsWith(".npy")) return "🔢";
+  if (n.name.endsWith(".txt")) return "📋";
+  return "·";
+}
+
+function render(node, depth=0) {
+  const wrap = document.createElement("div");
+  wrap.className = "t-item";
+
+  const row = document.createElement("div");
+  row.className = "t-row";
+  row.dataset.id = node.id;
+  row.style.paddingLeft = (14 + depth * 14) + "px";
+
+  const chev = document.createElement("span");
+  if (node.type === "dir") {
+    chev.className = "t-chev" + (node.open ? " open" : "");
+    chev.innerHTML = `<svg width="8" height="8" viewBox="0 0 8 8"><path d="M2 1.5l4 2.5-4 2.5V1.5z" fill="currentColor"/></svg>`;
+  } else {
+    chev.className = "t-chev-blank";
+  }
+  row.appendChild(chev);
+
+  const ic = document.createElement("span");
+  ic.className = "t-icon";
+  ic.textContent = icon(node);
+  row.appendChild(ic);
+
+  const nm = document.createElement("span");
+  nm.className = "t-name" + (node.type==="dir" ? " is-dir" : "");
+  nm.style.color = node.layer ? `var(--layer-${node.layer})` : "var(--fg)";
+  nm.textContent = node.name;
+  row.appendChild(nm);
+
+  if (node.suggestion) {
+    const b = document.createElement("span");
+    b.className = "t-badge b-sug"; b.textContent = "⚡"; row.appendChild(b);
+  }
+  if (node.note) {
+    const b = document.createElement("span");
+    b.className = "t-badge b-note"; b.textContent = "?"; row.appendChild(b);
+  }
+
+  wrap.appendChild(row);
+
+  let kids = null;
+  if (node.children) {
+    kids = document.createElement("div");
+    kids.className = "t-kids" + (node.open ? " open" : "");
+    node.children.forEach(c => kids.appendChild(render(c, depth+1)));
+    wrap.appendChild(kids);
+  }
+
+  row.addEventListener("click", e => {
+    e.stopPropagation();
+    if (node.type==="dir" && kids) {
+      node.open = !node.open;
+      chev.classList.toggle("open", node.open);
+      kids.classList.toggle("open", node.open);
+    }
+    document.querySelectorAll(".t-row.sel").forEach(r => r.classList.remove("sel"));
+    row.classList.add("sel");
+    selId = node.id;
+    showDetail(node);
+  });
+
+  return wrap;
+}
+
+function buildPath(node, tree=TREE, path="") {
+  if (tree.id === node.id) return path + tree.name;
+  if (tree.children) {
+    for (const c of tree.children) {
+      const r = buildPath(node, c, path + (tree.name === "GLINT/" ? "" : tree.name));
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+function showDetail(node) {
+  const panel = document.getElementById("detail");
+  const lc = `var(--layer-${node.layer || "root"})`;
+  const ll = LAYER_LABELS[node.layer] || "Root";
+  const path = "GLINT/" + (buildPath(node) || node.name);
+
+  let h = `<div class="d-path">${path}</div>`;
+  h += `<span class="d-typebadge" style="background:${lc}22;color:${lc}">
+    ${node.type==="dir" ? "📁 Directory" : "📄 File"} · ${ll}
+  </span>`;
+
+  if (node.desc) {
+    h += `<div class="d-sec"><div class="d-label">What it does</div>
+      <div class="d-desc">${node.desc}</div></div>`;
+  }
+  if (node.note) {
+    h += `<div class="d-sec"><div class="d-label">Your annotation</div>
+      <div class="d-note">💬 ${node.note}</div></div>`;
+  }
+  if (node.suggestion) {
+    h += `<div class="d-sec"><div class="d-label">Suggestion</div>
+      <div class="d-sug">⚡ ${node.suggestion}</div></div>`;
+  }
+  if (node.children && node.children.length) {
+    h += `<hr class="d-hr"><div class="d-label">Contains ${node.children.length} item${node.children.length!==1?"s":""}</div>
+      <div class="d-kids">`;
+    node.children.forEach(c => {
+      const col = `var(--layer-${c.layer||"root"})`;
+      h += `<div style="color:${col}">${c.type==="dir"?"📁":"·"} ${c.name}</div>`;
+    });
+    h += "</div>";
+  }
+
+  panel.innerHTML = h;
+}
+
+document.getElementById("tree").appendChild(render(TREE));
+</script>
