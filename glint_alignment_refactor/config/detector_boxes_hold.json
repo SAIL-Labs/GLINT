@@ -1,0 +1,28 @@
+{
+  "comment": "Boxes inferred from pixel-to-wavelength 20260503 observing calibrations. Range below is 1300 to 1700 nm. Phot 3 changed from 154 to 155 for ease of processing.",
+  "convention": "[y0, y1, x0, x1]",
+  "photometry": {
+    "Phot 1": [240, 246, 187, 259],
+    "Phot 2": [222, 228, 189, 261],
+    "Phot 3": [203, 209, 190, 262]
+  },
+  "null": {
+    "N1 / 11-31": [166, 172, 193, 265],
+    "N2 / 11-20": [109, 116, 195, 267],
+    "N3 / 20-31": [35, 41, 193, 265]
+  },
+  "fringe_tracking": {
+    "N1 / 11-31": {
+      "FT1": [184, 190, 192, 264],
+      "FT2": [147, 153, 194, 266]
+    },
+    "N2 / 11-20": {
+      "FT1": [128, 134, 194, 266],
+      "FT2": [91, 97, 195, 267]
+    },
+    "N3 / 20-31": {
+      "FT1": [53, 59, 194, 266],
+      "FT2": [16, 22, 191, 263]
+    }
+  }
+}
