@@ -1,5 +1,5 @@
 """
-Scans DM segment piston (per baseline) to measure the narrowband null depth
+Scans DM segment piston (per baseline, or per single segment) to measure the narrowband null depth
 at each aperture pair, recording APAPANE spectral photometry through the
 scan and saving movie/scan/OPD data as FITS files.
 
@@ -32,7 +32,12 @@ PARAM_FILE = str(glint_paths.CODE_ROOT / 'benchalignment' / 'dmalignment' / 'nul
 DARK_FILEPATH = str(glint_paths.DATA_ROOT / 'benchalignment' / 'spectraldark.fits')
 
 # Segments not being actively scanned are tilted away to this tip/tilt 
-TIP, TILT = -5.5, -4
+TIP, TILT = 5.0, 0.0
+
+# The three GLINT apertures, and the baselines (null channels) they form, in
+# the fixed spectral order used by nullpeaks/boundingvals.
+APERTURES = ["11", "20", "31"]
+BASELINES = [["11", "31"], ["11", "20"], ["20", "31"]]
 
 # Keys required in scanparameters.json under "config". Checked up front so a
 # typo or missing field fails fast 
@@ -262,15 +267,17 @@ def tilt_all_except(dm, keep: list) -> None:
             dm.set_segment(seg, 0, TIP, TILT)
 
 
-def save_data(baseline: list, movie: np.ndarray, opd: np.ndarray, timestamps, savepath: str, avg: bool) -> None:
+def save_data(baseline: list, movie: np.ndarray, opd: np.ndarray, timestamps, savepath: str, avg: bool,
+              fluxes: dict = None) -> None:
     """
-    Save one baseline's photometry movie, plus OPD/timestamp metadata, to
-    a multi-extension FITS file.
+    Save one baseline's (or one segment's) photometry movie, plus
+    OPD/timestamp metadata, to a multi-extension FITS file.
 
     Parameters
     ----------
     baseline : list
-        The two segments scanned, e.g. ["11", "31"].
+        The segment(s) scanned, e.g. ["11", "31"] for a baseline scan or
+        ["11"] for a single-segment scan.
     movie : np.ndarray
         Shape (n_frames, box_height, box_width) photometry cube.
     opd : np.ndarray
@@ -283,8 +290,11 @@ def save_data(baseline: list, movie: np.ndarray, opd: np.ndarray, timestamps, sa
     avg : bool
         True if `movie` is an average over multiple repeat scans (changes
         the output filename).
+    fluxes : dict, optional
+        {column_name: per-frame flux array} extra columns to add to the
+        METADATA table (e.g. summed flux in each null channel box).
     """
-    seg1, seg2 = baseline
+    name = ':'.join(str(b) for b in baseline)
 
     primary_hdu = fits.PrimaryHDU()
     movie_hdu = fits.ImageHDU(movie, name='MOVIE')
@@ -296,12 +306,15 @@ def save_data(baseline: list, movie: np.ndarray, opd: np.ndarray, timestamps, sa
     # Table HDU for OPD and Timestamps
     col_opd = fits.Column(name='OPD', array=opd, format='E') # 32-bit float
     col_time = fits.Column(name='TIMESTAMP', array=timestamps, format='D')  # 64-bit float
-    metadata_hdu = fits.BinTableHDU.from_columns([col_opd, col_time], name='METADATA')
+    cols = [col_opd, col_time]
+    for colname, flux in (fluxes or {}).items():
+        cols.append(fits.Column(name=colname, array=np.asarray(flux, dtype=float), format='D'))
+    metadata_hdu = fits.BinTableHDU.from_columns(cols, name='METADATA')
 
     hdul = fits.HDUList([primary_hdu, movie_hdu, metadata_hdu])
 
     prefix = 'avgmovie' if avg else 'movie'
-    filename = f'{savepath}/{prefix}_{seg1}:{seg2}.fits'
+    filename = f'{savepath}/{prefix}_{name}.fits'
     hdul.writeto(filename, overwrite=True)
     print(f'Saved {filename}')
 
@@ -408,13 +421,15 @@ def nullscan(apapane: SHM, dm, baseline: list, tip: list, tilt: list, pistpositi
         Wall-clock timestamp per frame (NaN-filled if not requested).
     """
     seg1, seg2 = int(baseline[0]), int(baseline[1])
+    seg1 = 11
     tip_seg1, tip_seg2 = float(tip[0]), float(tip[1])
     tilt_seg1, tilt_seg2 = float(tilt[0]), float(tilt[1])
     pistpositions = np.asarray(pistpositions, dtype=float)
     n = len(pistpositions)
 
     if tilt_unused:
-        keep = [seg1] if scan_one_segment else [11, 20, 31]
+        # keep = [seg1] if scan_one_segment else [11, 20, 31]
+        keep = [11, 20, 31]
         tilt_all_except(dm, keep=keep)
 
     print(f'tip_seg1 = {tip_seg1}, tilt_seg1 = {tilt_seg1}')
@@ -432,9 +447,9 @@ def nullscan(apapane: SHM, dm, baseline: list, tip: list, tilt: list, pistpositi
 
     dm.set_segment(seg1, pos_seg1_scan1[0], tip_seg1, tilt_seg1)
     time.sleep(0.01)
-    if not scan_one_segment:
-        dm.set_segment(seg2, pos_seg2_scan1, tip_seg2, tilt_seg2)
-        time.sleep(0.01)
+    # if not scan_one_segment:
+    #     dm.set_segment(seg2, pos_seg2_scan1, tip_seg2, tilt_seg2)
+    #     time.sleep(0.01)
 
     print(f'Scanning baseline {seg1}-{seg2}')
     height, width = (dark.shape if save_full_frame
@@ -484,13 +499,160 @@ def nullscan(apapane: SHM, dm, baseline: list, tip: list, tilt: list, pistpositi
     return movie, scan, opd, ts
 
 
+def plot_segmentscan(segment: str, scans: np.ndarray, labels: list, opd: np.ndarray, iteration: int,
+                     savepath: str, save: bool, avg: bool, normalise: bool = False) -> None:
+    """
+    Plot flux vs OPD in every null channel box for a single-segment piston
+    scan, optionally normalising each curve to its own peak and saving to PNG.
+    """
+    for k, label in enumerate(labels):
+        curve = scans[:, k]
+        if normalise:
+            curve = curve / np.max(curve)
+        plt.plot(opd, curve, label=f'null {label}')
+
+    plt.xlabel('OPD (um)')
+    plt.ylabel('Normalised summed flux' if normalise else 'Summed flux')
+    plt.title(f'Piston scan of segment {segment}')
+    plt.legend()
+    plt.grid(True)
+
+    if save:
+        prefix = 'segment_avg' if avg else 'segment'
+        if normalise:
+            prefix = 'normalised_' + prefix
+        plt.savefig(f'{savepath}/{prefix}_{segment}_scan{iteration}.png')
+
+    plt.clf()
+
+
+def set_reference(dm, tips: dict, tilts: dict, segments: list = APERTURES) -> None:
+    """
+    Put each GLINT aperture at zero piston and its optimal tip/tilt.
+
+    Parameters
+    ----------
+    dm : shmDMcontrol.DM
+        DM object.
+    tips, tilts : dict
+        {segment: value} optimal tip/tilt for each aperture (config 'tips'/'tilts').
+    segments : list of str, optional
+        Apertures to reset. Default all of APERTURES.
+    """
+    for seg in segments:
+        dm.set_segment(int(seg), 0.0, float(tips[seg]), float(tilts[seg]))
+    time.sleep(0.01)
+
+
+def segmentscan(apapane: SHM, dm, segment: str, tips: dict, tilts: dict, pistpositions: np.ndarray,
+                boxes: list, dark: np.ndarray, savepath: str, nframes: int = 1,
+                tilt_unused: bool = True, save_timestamps: bool = False):
+    """
+    Piston-scan a single segment while the other GLINT apertures sit at
+    zero piston and optimal tip/tilt, recording the summed flux in every
+    null channel box at each position.
+
+    All non-GLINT segments are tilted away (if `tilt_unused`). The scanned
+    segment holds its own optimal tip/tilt throughout and is returned to
+    zero piston at the end.
+
+    Parameters
+    ----------
+    apapane : SHM
+        Shared-memory handle for the APAPANE camera.
+    dm : shmDMcontrol.DM
+        DM object.
+    segment : str
+        Segment to scan, e.g. "11".
+    tips, tilts : dict
+        {segment: value} optimal tip/tilt for each aperture.
+    pistpositions : array-like
+        Piston positions to scan through, min to max.
+    boxes : list
+        [top, bottom, left, right] boxes to sum flux over, one per null
+        channel (see getbox()).
+    dark : np.ndarray
+        Dark frame to subtract from every exposure.
+    savepath : str
+        Directory to save the per-scan movie FITS file into.
+    nframes : int, optional
+        Frames to average per exposure. Default 1.
+    tilt_unused : bool, optional
+        If True, tilt away every segment that is not a GLINT aperture.
+        Default True.
+    save_timestamps : bool, optional
+        If True, record a wall-clock timestamp per frame. Default False.
+
+    Returns
+    -------
+    movie : np.ndarray
+        Shape (n_frames, frame_height, frame_width) full-frame cube (always
+        full frame, since flux is recorded in several boxes).
+    scans : np.ndarray
+        Shape (n_frames, n_boxes) summed flux in each box at each frame.
+    opd : np.ndarray
+        OPD (um) of the scanned segment relative to the zero-piston
+        apertures, accounting for the double pass off the DM.
+    timestamps : np.ndarray
+        Wall-clock timestamp per frame (NaN-filled if not requested).
+    """
+    seg = int(segment)
+    tip_seg, tilt_seg = float(tips[segment]), float(tilts[segment])
+    pistpositions = np.asarray(pistpositions, dtype=float)
+    n = len(pistpositions)
+
+    if tilt_unused:
+        tilt_all_except(dm, keep=APERTURES)
+
+    # Every aperture (including the one about to be scanned) starts at zero
+    # piston and its optimal tip/tilt.
+    set_reference(dm, tips, tilts)
+
+    print(f'Scanning segment {segment} (tip = {tip_seg}, tilt = {tilt_seg}); '
+          f'others at zero piston: {[s for s in APERTURES if s != segment]}')
+
+    movie = np.zeros((n, *dark.shape), dtype=float)
+    scans = np.zeros((n, len(boxes)), dtype=float)
+    timestamps = [] if save_timestamps else None
+
+    for posnum in tqdm.tqdm(range(n), desc=f"Segment {segment} scan"):
+        dm.set_segment(seg, pistpositions[posnum], tip_seg, tilt_seg)
+        time.sleep(0.001)
+
+        full_frame = getdata(apapane, dark, nframes)
+        movie[posnum] = full_frame
+        for k, box in enumerate(boxes):
+            scans[posnum, k] = np.sum(crop_to_box(full_frame, box))
+
+        if save_timestamps:
+            timestamps.append(time.time())
+
+    # Return the scanned segment to zero piston.
+    set_reference(dm, tips, tilts, segments=[segment])
+
+    opd = 2.0 * pistpositions  # Double pass; reference apertures sit at 0 piston.
+
+    ts = np.asarray(timestamps) if save_timestamps else np.full(n, np.nan, dtype=float)
+    return movie, scans, opd, ts
+
+
+def null_columns(scans: np.ndarray) -> dict:
+    """Map an (n_frames, 3) segment-scan flux array to named METADATA columns."""
+    return {f"NULL_{a}:{b}": scans[:, k] for k, (a, b) in enumerate(BASELINES)}
+
+
 if __name__ == "__main__":
 
-    # Which baselines to scan this run.
-    scan_one_segment = False
+    # 'baseline' scans the baselines selected by b1/b2/b3 in scanparameters.json.
+    # 'segment' piston-scans each segment in segments_to_scan in turn, with the
+    # other GLINT apertures at zero piston / optimal tip-tilt.
+    scan_mode = 'segment'
+    segments_to_scan = ["11", "20", "31"]
+
+    scan_one_segment = True
     tilt_unused = True
     save_timestamps = False
-    save_full_frame = False
+    save_full_frame = True
 
     params = load_params()
     validate_config(params['config'])
@@ -539,6 +701,38 @@ if __name__ == "__main__":
 
     nsteps = np.ceil(scan_range / step_size).astype(int) + 1
     pistpositions = np.linspace(start_pos, start_pos + scan_range, nsteps)
+
+    if scan_mode == 'segment':
+        # Record flux in all three null channels; the one not involving the
+        # scanned segment acts as a stability reference.
+        boxes = [getbox(b, nullpeaks, boundingvals, box_halfwidth) for b in BASELINES]
+        labels = [':'.join(b) for b in BASELINES]
+
+        for segment in segments_to_scan:
+            if segment not in APERTURES:
+                raise ValueError(f"Segment {segment} is not one of {APERTURES}.")
+
+            scan_list, movie_list = [], []
+            for _ in range(numavg):
+                movie, scans, opd, ts = segmentscan(
+                    apapane, dm, segment, tips, tilts, pistpositions, boxes, dark, savepath,
+                    nframes=nframes, tilt_unused=tilt_unused, save_timestamps=save_timestamps,
+                )
+                save_data([segment], movie, opd, ts, savepath, avg=False, fluxes=null_columns(scans))
+                plot_segmentscan(segment, scans, labels, opd, iteration, savepath, save=True, avg=False)
+                scan_list.append(scans)
+                movie_list.append(movie)
+
+            avgscans = np.mean(np.stack(scan_list, axis=0), axis=0)
+            avgmovie = np.mean(np.stack(movie_list, axis=0), axis=0)
+            del movie_list
+
+            plot_segmentscan(segment, avgscans, labels, opd, iteration, savepath, save=True, avg=True)
+            plot_segmentscan(segment, avgscans, labels, opd, iteration, savepath, save=True, avg=True,
+                             normalise=True)
+            save_data([segment], avgmovie, opd, ts, savepath, avg=True, fluxes=null_columns(avgscans))
+
+        sys.exit(0)
 
     baseline_map = {
         'b1': ["11", "31"],

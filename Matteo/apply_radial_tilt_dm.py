@@ -46,11 +46,11 @@ from hardware_control.dmcontrol import shmDMcontrol
 # Overall radial command amplitude in the same command units as your usual
 # tip/tilt values. This is the approximate norm of the generated (tip, tilt)
 # vector, not necessarily the exact beam-angle amplitude.
-RADIAL_TILT_AMPLITUDE = 4.0
+RADIAL_TILT_AMPLITUDE = 5.0
 
 # Choose 'outward' to send each segment away from the centre, or 'inward' to
 # send it toward the centre.
-RADIAL_DIRECTION = 'outward'   # 'outward' or 'inward'
+RADIAL_DIRECTION = 'inward'   # 'outward' or 'inward'
 
 # Piston value applied to every segment while setting the radial tilt.
 PISTON_VALUE = 0
