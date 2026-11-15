@@ -567,6 +567,63 @@ def save_plot(
     plt.close(figure)
 
 
+def show_fixed_z_diagnostic(
+    x: np.ndarray,
+    y: np.ndarray,
+    z: float,
+    spectra: np.ndarray,
+    acquired: np.ndarray,
+) -> None:
+    """Display the measured XY points with log-coloured spectral sums; do not save."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm
+
+    grid_x, grid_y = np.meshgrid(x, y, indexing="ij")
+    integrated = np.sum(spectra[:, :, 0, :], axis=-1)
+    measured = acquired[:, :, 0] & np.isfinite(integrated)
+    positive = measured & (integrated > 0)
+    nonpositive = measured & (integrated <= 0)
+
+    figure, axis = plt.subplots(figsize=(7.2, 6.0))
+    try:
+        if np.any(positive):
+            values = integrated[positive]
+            vmin, vmax = float(np.min(values)), float(np.max(values))
+            if vmin == vmax:
+                vmin, vmax = vmin / 2, vmax * 2
+            points = axis.scatter(
+                grid_x[positive], grid_y[positive], c=values,
+                norm=LogNorm(vmin=vmin, vmax=vmax), cmap="magma",
+                s=85, edgecolors="0.3", linewidths=0.4, zorder=3,
+            )
+            figure.colorbar(points, ax=axis, label="Integrated spectral flux (sum of vector; log scale)")
+        else:
+            axis.text(0.5, 1.02, "No positive flux for a logarithmic colour scale",
+                      transform=axis.transAxes, ha="center", fontsize=9)
+        if np.any(nonpositive):
+            # Dark-subtracted values may be zero/negative; keep these visible
+            # without clipping them to an artificial positive flux.
+            axis.scatter(grid_x[nonpositive], grid_y[nonpositive], color="0.55",
+                         marker="x", s=65, label="Flux <= 0 (outside log scale)", zorder=3)
+            axis.legend(loc="best")
+        dx = float(np.median(np.diff(x))) if len(x) > 1 else 1.0
+        dy = float(np.median(np.diff(y))) if len(y) > 1 else 1.0
+        axis.set_xlim(x[0] - dx / 2, x[-1] + dx / 2)
+        axis.set_ylim(y[0] - dy / 2, y[-1] + dy / 2)
+        axis.set_xticks(x, minor=True)
+        axis.set_yticks(y, minor=True)
+        axis.grid(which="both", alpha=0.25)
+        axis.set_aspect("equal", adjustable="box")
+        axis.set_xlabel("Mount X [pulses]")
+        axis.set_ylabel("Mount Y [pulses]")
+        axis.set_title(f"Fiber alignment diagnostic: Z={z:g}, {int(NFRAMES)} frames per point")
+        figure.tight_layout()
+        print("Displaying fixed-Z alignment diagnostic (not saved). Close the plot window to finish.")
+        plt.show(block=True)
+    finally:
+        plt.close(figure)
+
+
 def _confirm() -> None:
     if not sys.stdin.isatty():
         raise RuntimeError("Interactive confirmation required; rerun with --yes only after reviewing the plan")
@@ -952,6 +1009,13 @@ def run(args: argparse.Namespace) -> Path | None:
     if failure is not None:
         raise failure
     print(f"\nSaved single-fiber spectral scan: {fits_path}")
+    if not z_scan:
+        # Display only after saving data, restoring the mount/DM and closing
+        # hardware, so the interactive window cannot delay restoration.
+        try:
+            show_fixed_z_diagnostic(x, y, float(z[0]), spectra, acquired)
+        except Exception as error:
+            print(f"WARNING: alignment diagnostic could not be displayed: {error}", file=sys.stderr)
     return output_base.parent
 
 
