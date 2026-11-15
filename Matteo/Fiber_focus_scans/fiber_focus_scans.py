@@ -37,7 +37,7 @@ import numpy as np
 # Same convention as the calibration files: [y0, y1, x0, x1], zero-based,
 # with exclusive upper bounds. Example syntax: (240, 246, 187, 259).
 # No photometric-channel box is selected automatically.
-SPECTRAL_BOX: tuple[int, int, int, int] | None = None
+SPECTRAL_BOX: tuple[int, int, int, int] | None = (72, 77, 158, 267)
 
 # X start/end, Y start/end and XY step are requested in the terminal on every
 # run, in absolute integer mount pulses. Endpoints are included. Answer YES
