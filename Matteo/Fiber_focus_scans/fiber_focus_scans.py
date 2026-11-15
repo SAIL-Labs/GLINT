@@ -7,8 +7,6 @@ At each position, average NFRAMES, subtract the saved APAPANE dark, then
 average the rows within each detector column of the selected box. The FITS
 SPECTRA array has NumPy order [x, y, z, spectral_column], with one Z entry
 at the launch-time mount position when automatic Z scanning is disabled.
-The primary FITS header and SCAN_SETTINGS extension record the scan settings
-and instrument configuration, independently of the companion JSON file.
 
 The GLINT DM is kept awake by periodically republishing the exact commanded
 37 x 3 PTT state through the refactor's GLINT ``dmptt`` interface.  No SSH,
@@ -57,7 +55,7 @@ DARK_PATH: str | None = None
 # move_mount() already waits for controller motion to finish and verifies the
 # commanded position. This short additional delay is only for residual bench
 # vibration. Increase it if a repeatability test shows flux transients.
-SETTLE_S = 0.02
+SETTLE_S = 0
 
 # The output arrays are small, but opening and checksumming a FITS file often is
 # comparatively expensive. An exception/interrupt always triggers an immediate
@@ -273,7 +271,7 @@ def validate_user_settings() -> tuple[int, int, int, int]:
     return y0, y1, x0, x1
 
 
-def prompt_scan_axes() -> tuple[np.ndarray, np.ndarray, np.ndarray | None, float, float | None]:
+def prompt_scan_axes() -> tuple[np.ndarray, np.ndarray, np.ndarray | None, float]:
     """Require an explicit scan grid every run, including --check-only runs."""
     print("Enter absolute mount positions in integer pulses (inclusive endpoints).")
     x_start = float(input("X start: ").strip())
@@ -289,13 +287,12 @@ def prompt_scan_axes() -> tuple[np.ndarray, np.ndarray, np.ndarray | None, float
             break
         print("Enter YES or NO.")
     z = None
-    z_step = None
     if answer == "YES":
         z_start = float(input("Z start: ").strip())
         z_end = float(input("Z end: ").strip())
         z_step = float(input("Z step: ").strip())
         z = inclusive_axis(z_start, z_end, z_step, "Z")
-    return x, y, z, xy_step, z_step
+    return x, y, z, xy_step
 
 
 def build_dm_state() -> dict[int, SegmentPTT]:
@@ -483,7 +480,6 @@ def write_fits_atomic(
     spectra: np.ndarray,
     dm_ptt: np.ndarray,
     dark_path: Path,
-    metadata: dict[str, Any],
 ) -> None:
     try:
         from astropy.io import fits
@@ -499,32 +495,6 @@ def write_fits_atomic(
     primary.header["DARKFILE"] = dark_path.name
     primary.header["ZSCAN"] = z_scan
     primary.header["BOXCONV"] = "[y0, y1, x0, x1], upper bounds excluded"
-    for label, values in (("X", x), ("Y", y), ("Z", z)):
-        primary.header[f"N{label}"] = len(values)
-        # Z is unknown only if startup failed before the first mount readback.
-        if np.all(np.isfinite(values)):
-            primary.header[f"{label}START"] = (float(values[0]), "mount pulses; inclusive")
-            primary.header[f"{label}END"] = (float(values[-1]), "mount pulses; inclusive")
-    primary.header["XYSTEP"] = (float(metadata["acquisition"]["xy_step_mount_pulses"]), "mount pulses")
-    z_step = metadata["acquisition"]["z_step_mount_pulses"]
-    if z_step is not None:
-        primary.header["ZSTEP"] = (float(z_step), "mount pulses")
-    primary.header["NSPEC"] = spectra.shape[-1]
-    primary.header["SETTLE"] = (float(SETTLE_S), "extra settling time [s]")
-    primary.header["CHECKPT"] = (int(CHECKPOINT_EVERY), "checkpoint cadence [positions]")
-    primary.header["KEEPSET"] = (float(DM_KEEPALIVE_SETTLE_S), "DM keep-alive settling [s]")
-    primary.header["ADCMAX"] = float(ADC_MAX_ADU)
-    primary.header["SATFRAC"] = float(SATURATION_FRACTION)
-    primary.header["SATLIMIT"] = float(ADC_MAX_ADU) * float(SATURATION_FRACTION)
-    primary.header["SERPENT"] = True
-    primary.header["FIXROLL"] = float(metadata["acquisition"]["fixed_roll_mount_pulses"])
-    primary.header["MOTIME"] = (float(metadata["acquisition"]["motion_timeout_s"]), "motion timeout [s]")
-    primary.header["DARKPATH"] = str(dark_path)
-    primary.header["DARKHASH"] = metadata["dark"]["sha256"]
-    primary.header["INSTCONF"] = metadata["instrument_config"]
-    primary.header["DATE-BEG"] = metadata["started_utc"]
-    primary.header["NPLANNED"] = int(metadata["planned_points"])
-    primary.header["NACQUIRE"] = int(np.count_nonzero(acquired))
     for key, value in zip(("BOX_Y0", "BOX_Y1", "BOX_X0", "BOX_X1"), box):
         primary.header[key] = int(value)
     spectral_hdu = fits.ImageHDU(np.asarray(spectra, dtype=np.float64), name="SPECTRA")
@@ -553,19 +523,6 @@ def write_fits_atomic(
     for hdu in hdus:
         if hdu.name in {"X_ACTUAL", "Y_ACTUAL", "Z_ACTUAL", "ACQUIRED", "RAW_MAX"}:
             hdu.header["NPORDER"] = "x,y,z"
-    # Embed the complete metadata/configuration snapshot so the FITS remains
-    # self-contained even when separated from its companion JSON file.
-    snapshot = dict(metadata)
-    snapshot["status"] = status
-    snapshot["acquired_points"] = int(np.count_nonzero(acquired))
-    serialized = json.dumps(snapshot, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
-    settings_hdu = fits.BinTableHDU.from_columns(
-        [fits.Column(name="JSON", format=f"{len(serialized)}A", array=[serialized])],
-        name="SCAN_SETTINGS",
-    )
-    settings_hdu.header["FORMAT"] = "JSON"
-    settings_hdu.header.add_comment("Complete scan settings and instrument configuration snapshot.")
-    hdus.append(settings_hdu)
     temporary = path.with_name(f".{path.stem}.tmp{path.suffix}")
     fits.HDUList(hdus).writeto(temporary, overwrite=True, checksum=True)
     os.replace(temporary, path)
@@ -631,7 +588,7 @@ def _require_fits_support() -> None:
 
 def run(args: argparse.Namespace) -> Path | None:
     box = validate_user_settings()
-    x, y, entered_z, xy_step, z_step = prompt_scan_axes()
+    x, y, entered_z, xy_step = prompt_scan_axes()
     z_scan = entered_z is not None
     # With no Z scan, fill the singleton axis from controller readback before
     # acquisition. A failed startup is recorded as null in JSON / NaN in FITS.
@@ -706,7 +663,6 @@ def run(args: argparse.Namespace) -> Path | None:
         "status": "starting",
         "started_utc": started.isoformat(),
         "instrument_config": str(instrument_path),
-        "instrument_settings": {key: value for key, value in instrument.items() if not key.startswith("_")},
         "axes": {"x": x.tolist(), "y": y.tolist(), "z": z.tolist() if z_scan else [None]},
         "axis_units": {"x": "mount pulses", "y": "mount pulses", "z": "mount pulses"},
         "automatic_z_scan": z_scan,
@@ -729,9 +685,6 @@ def run(args: argparse.Namespace) -> Path | None:
                 "then mean box rows within each detector X column"
             ),
             "xy_step_mount_pulses": xy_step,
-            "z_step_mount_pulses": z_step,
-            "fixed_roll_mount_pulses": float(instrument["mount_control"]["fixed_roll"]),
-            "motion_timeout_s": float(instrument["safety"]["motion_timeout_s"]),
             "mount_strategy": "fixed roll once; XY serpentine, reversed on alternate Z planes; command changing axes only",
             "per_point_full_mount_readback": False,
         },
@@ -739,7 +692,6 @@ def run(args: argparse.Namespace) -> Path | None:
         "glint_dm_keepalive": {
             "method": "republish unchanged state through InstrumentHardware.set_dm / GLINT dmptt",
             "interval_min": float(DM_KEEPALIVE_INTERVAL_MIN),
-            "settle_s": float(DM_KEEPALIVE_SETTLE_S),
             "events": [],
             "ssh_used": False,
             "scexao_dm_accessed": False,
@@ -796,11 +748,6 @@ def run(args: argparse.Namespace) -> Path | None:
     def checkpoint(status: str) -> None:
         checkpoint_started = time.monotonic()
         try:
-            payload["status"] = status
-            payload["acquired_points"] = int(np.count_nonzero(acquired))
-            if keepalive is not None:
-                payload["glint_dm_keepalive"]["events"] = list(keepalive.events)
-            payload["timing"] = timing_summary()
             write_fits_atomic(
                 fits_path,
                 status=status,
@@ -817,8 +764,12 @@ def run(args: argparse.Namespace) -> Path | None:
                 spectra=spectra,
                 dm_ptt=dm_ptt_array,
                 dark_path=dark_path,
-                metadata=payload,
             )
+            payload["status"] = status
+            payload["acquired_points"] = int(np.count_nonzero(acquired))
+            if keepalive is not None:
+                payload["glint_dm_keepalive"]["events"] = list(keepalive.events)
+            payload["timing"] = timing_summary()
             _atomic_json(json_path, payload)
         finally:
             timing_totals["checkpoint_s"] += time.monotonic() - checkpoint_started
@@ -997,11 +948,7 @@ def run(args: argparse.Namespace) -> Path | None:
     payload["timing"] = timing_summary()
     if failure is None:
         payload["status"] = "completed"
-    elif payload["status"] not in {"failed", "aborted"}:
-        payload["status"] = "failed"
-        payload["error"] = f"{type(failure).__name__}: {failure}"
-    # Persist the final status and restoration results inside the FITS too.
-    checkpoint(payload["status"])
+    _atomic_json(json_path, payload)
     if failure is not None:
         raise failure
     print(f"\nSaved single-fiber spectral scan: {fits_path}")
