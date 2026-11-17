@@ -4,7 +4,7 @@
 Based on fiber_focus_scans.py. Edit the settings and SEGMENT_PTT below, then
 enter an XY grid, segment ID, absolute surface-piston start/end in um, and
 number of piston samples. Both endpoints are included. Each piston gets a
-complete XY raster; the chosen segment retains its configured tip/tilt and
+complete XY raster; the chosen segment always has zero tip and tilt, and
 all other segments retain their complete SEGMENT_PTT settings.
 
 Mount Z stays at its launch-time readback and is never commanded. Spectra
@@ -45,7 +45,7 @@ SATURATION_FRACTION = 0.80
 # (surface piston [um], tip [mrad], tilt [mrad]); IDs are the GUI's 0..36.
 # All 37 segments default to (0, -5.0, 0). Edit individual rows as needed.
 # The scanned segment's piston is REPLACED by the absolute scan value.
-# Its tip/tilt and all other segments' full PTT are retained throughout.
+# Its tip/tilt are always forced to zero; all other segments retain their full PTT.
 SEGMENT_PTT: dict[int, tuple[float, float, float]] = {
     0: (0.0, -5.0, 0.0),
     1: (0.0, -5.0, 0.0),
@@ -476,11 +476,11 @@ def prompt_scan_axes() -> tuple[np.ndarray, np.ndarray, float, int, np.ndarray]:
 
 
 def state_for_piston(segment: int, piston_um: float) -> dict[int, SegmentPTT]:
-    """Build every command from the base settings, replacing only one piston."""
+    """Use the scanned piston with zero tip/tilt; retain every other base PTT."""
     if segment not in range(37) or not np.isfinite(piston_um):
         raise ValueError("A finite piston and segment in 0..36 are required")
     state = build_dm_state()
-    state[segment].piston_um = float(piston_um)
+    state[segment] = SegmentPTT(piston_um=float(piston_um), tip_mrad=0.0, tilt_mrad=0.0)
     return state
 
 
@@ -603,7 +603,7 @@ def run(args: argparse.Namespace) -> Path | None:
     print("Single-fiber GLINT XY / segment-piston spectral scan")
     print(f"  XY grid          : X={x.tolist()}, Y={y.tolist()}, step={xy_step:g} pulses")
     print("  fixed mount Z    : launch-time controller readback; NO Z commands")
-    print(f"  selected segment : {segment}; tip/tilt retained: {SEGMENT_PTT[segment][1:]}")
+    print(f"  selected segment : {segment}; tip=0.0, tilt=0.0 mrad throughout the scan")
     print(f"  absolute pistons : {pistons.tolist()} surface um (inclusive endpoints)")
     print(f"  points           : {npoints} = {len(x)} X * {len(y)} Y * {len(pistons)} pistons")
     print(f"  spectral box     : {box} = [y0,y1,x0,x1], upper bounds excluded")
@@ -615,7 +615,7 @@ def run(args: argparse.Namespace) -> Path | None:
     print("  final state      : restore launch-time XY/roll and full GLINT DM PTT")
     print("  base SEGMENT_PTT : surface piston [um], tip [mrad], tilt [mrad]")
     for s, values in sorted(SEGMENT_PTT.items()):
-        note = " (piston replaced by sweep values)" if s == segment else ""
+        note = " (overridden during scan: swept piston, tip=0.0, tilt=0.0)" if s == segment else ""
         print(f"    {s:2d}: {values}{note}")
 
     instrument_path = args.instrument_config.expanduser().resolve()
@@ -663,7 +663,8 @@ def run(args: argparse.Namespace) -> Path | None:
         "piston_scan": {"segment": segment, "mode": "absolute surface piston; replaces base piston",
                         "start_um": float(pistons[0]), "end_um": float(pistons[-1]),
                         "count": len(pistons), "settle_s": float(PISTON_SETTLE_S),
-                        "retain_selected_tip_tilt": True,
+                        "retain_selected_tip_tilt": False,
+                        "selected_tip_mrad": 0.0, "selected_tilt_mrad": 0.0,
                         "other_segments": "unchanged from SEGMENT_PTT throughout acquisition"},
         "acquisition": {
             "nframes": int(NFRAMES), "settle_s": float(SETTLE_S),

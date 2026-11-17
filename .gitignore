@@ -16,6 +16,7 @@ __pycache__/
 *.gif
 *.png
 *.log
+*.ipynb
 
 # Known large data/archive directories (safety net -- glint_paths.py routes all
 # script output to the sibling glintdata/ tree, so these should stay empty)
