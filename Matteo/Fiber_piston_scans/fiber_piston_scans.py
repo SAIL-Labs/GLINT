@@ -9,7 +9,9 @@ all other segments retain their complete SEGMENT_PTT settings.
 
 Mount Z stays at its launch-time readback and is never commanded. Spectra
 have NumPy order [x, y, piston, spectral_column]. Only the GLINT dmptt and
-mount XY/fixed roll are commanded; camera access is passive frame reading.
+mount XY/fixed roll are commanded locally; a separate SCExAO keep-alive
+runs ssh sc6 dmdispzero 00 04 at startup and every 45 minutes. Camera access
+is passive frame reading.
 Launch-time mount XY/roll and full DM PTT are restored on completion/error.
 """
 
@@ -20,7 +22,9 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +43,15 @@ PISTON_SETTLE_S = 0.10  # additional delay after each verified piston command
 CHECKPOINT_EVERY = 200
 DM_KEEPALIVE_INTERVAL_MIN = 15.0
 DM_KEEPALIVE_SETTLE_S = 0.10
+
+# SCExAO-DM keep-alive, independent of the GLINT dmptt refresh above.
+# Runs `ssh sc6 dmdispzero 00 04` at scan startup, then every 45 minutes.
+# Requires noninteractive SSH (key/agent authentication and an already known host).
+SCEXAO_DM_KEEPALIVE_ENABLED = True
+SCEXAO_DM_KEEPALIVE_INTERVAL_MIN = 45.0
+SCEXAO_DM_SSH_HOST = "sc6"
+SCEXAO_DM_SSH_TIMEOUT_S = 30.0
+
 ADC_MAX_ADU = 3000000.0
 SATURATION_FRACTION = 0.80
 
@@ -166,6 +179,111 @@ class GLINTDMKeepAlive:
         print(f"  GLINT DM keep-alive: unchanged PTT republished at {now}")
         return True
 
+
+
+def scexao_dm_keepalive_settings() -> dict[str, Any]:
+    """Return the SCExAO settings; disabled settings are not used or validated."""
+    if not SCEXAO_DM_KEEPALIVE_ENABLED:
+        return {"enabled": False}
+    interval = float(SCEXAO_DM_KEEPALIVE_INTERVAL_MIN)
+    timeout = float(SCEXAO_DM_SSH_TIMEOUT_S)
+    host = str(SCEXAO_DM_SSH_HOST).strip()
+    if not np.isfinite(interval) or interval <= 0:
+        raise ValueError("SCEXAO_DM_KEEPALIVE_INTERVAL_MIN must be finite and positive")
+    if not np.isfinite(timeout) or timeout <= 0:
+        raise ValueError("SCEXAO_DM_SSH_TIMEOUT_S must be finite and positive")
+    if not host or host.startswith("-") or any(c.isspace() for c in host):
+        raise ValueError("SCEXAO_DM_SSH_HOST must be a nonempty SSH host/alias")
+    return {
+        "enabled": True, "interval_min": interval, "ssh_host": host,
+        "timeout_s": timeout, "refresh_at_start": True,
+        "ssh_argv": ["ssh", "-T", "-oBatchMode=yes", "-oConnectTimeout=10",
+                     host, "dmdispzero", "00", "04"],
+    }
+
+
+class SCExAODMKeepAlive:
+    """Run the SCExAO-only SSH refresh while acquisition continues independently."""
+
+    def __init__(self, settings: dict[str, Any]) -> None:
+        self.settings = dict(settings)
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._events: list[dict[str, Any]] = []
+        self._error: str | None = None
+        self._started = False
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return {**self.settings, "started": self._started,
+                    "running": self._thread is not None and self._thread.is_alive(),
+                    "events": [dict(event) for event in self._events],
+                    "error": self._error}
+
+    def raise_if_failed(self) -> None:
+        with self._lock:
+            error = self._error
+        if error is not None:
+            raise RuntimeError(
+                f"SCExAO DM keep-alive failed: {error}. "
+                f"Check noninteractive SSH to {self.settings['ssh_host']} and availability of dmdispzero 00 04."
+            )
+
+    def _refresh(self) -> bool:
+        started = time.monotonic()
+        event: dict[str, Any] = {"utc": datetime.now(timezone.utc).isoformat()}
+        error = None
+        try:
+            result = subprocess.run(
+                self.settings["ssh_argv"], stdin=subprocess.DEVNULL,
+                capture_output=True, text=True, timeout=self.settings["timeout_s"],
+                check=False,
+            )
+            event.update(returncode=int(result.returncode),
+                         stdout=(result.stdout or "").strip()[-4000:],
+                         stderr=(result.stderr or "").strip()[-4000:])
+            if result.returncode:
+                detail = event["stderr"] or event["stdout"] or "no remote error text"
+                error = f"ssh exited {result.returncode}: {detail}"
+        except Exception as caught:
+            error = f"{type(caught).__name__}: {caught}"
+        event.update(duration_s=float(time.monotonic()-started),
+                     status="failed" if error else "completed")
+        if error:
+            event["error"] = error
+        with self._lock:
+            self._events.append(event)
+            if error:
+                self._error = error
+        if error:
+            print(f"  SCExAO DM keep-alive FAILED: {error}", file=sys.stderr, flush=True)
+        else:
+            print(f"  SCExAO DM keep-alive: dmdispzero 00 04 on "
+                  f"{self.settings['ssh_host']} at {event['utc']}", flush=True)
+        return error is None
+
+    def _loop(self) -> None:
+        # Event.wait sleeps without busy polling, and stop() wakes it immediately.
+        while not self._stop.wait(self.settings["interval_min"]*60.0):
+            if not self._refresh():
+                return
+
+    def start(self) -> None:
+        if self._started:
+            raise RuntimeError("SCExAO keep-alive has already started")
+        self._started = True
+        # Fail before hardware is opened if SSH credentials/command are unavailable.
+        self._refresh()
+        self.raise_if_failed()
+        self._thread = threading.Thread(target=self._loop, name="SCExAO-DM-keepalive", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            # An in-flight SSH call is bounded by SCEXAO_DM_SSH_TIMEOUT_S.
+            self._thread.join()
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -510,6 +628,9 @@ def write_fits_atomic(
     header["NPISTON"] = len(pistons)
     header["PISTWAIT"] = float(PISTON_SETTLE_S)
     header["KEEP_MIN"] = float(DM_KEEPALIVE_INTERVAL_MIN)
+    header["SCEXAO"] = bool(SCEXAO_DM_KEEPALIVE_ENABLED)
+    if SCEXAO_DM_KEEPALIVE_ENABLED:
+        header["SCEXMIN"] = float(SCEXAO_DM_KEEPALIVE_INTERVAL_MIN)
     header["DARKFILE"] = Path(payload["dark"]["path"]).name
     header["BOXCONV"] = "[y0, y1, x0, x1], upper bounds excluded"
     for key, value in zip(("BOX_Y0", "BOX_Y1", "BOX_X0", "BOX_X1"), box):
@@ -591,6 +712,8 @@ def save_plot(
 
 def run(args: argparse.Namespace) -> Path | None:
     box = validate_user_settings()
+    scexao_settings = scexao_dm_keepalive_settings()
+    scexao_keepalive = SCExAODMKeepAlive(scexao_settings) if scexao_settings["enabled"] else None
     x, y, xy_step, segment, pistons = prompt_scan_axes()
     base_state = build_dm_state()
     states = [state_for_piston(segment, value) for value in pistons]
@@ -617,6 +740,12 @@ def run(args: argparse.Namespace) -> Path | None:
     for s, values in sorted(SEGMENT_PTT.items()):
         note = " (overridden during scan: swept piston, tip=0.0, tilt=0.0)" if s == segment else ""
         print(f"    {s:2d}: {values}{note}")
+
+    if scexao_settings["enabled"]:
+        print(f"  SCExAO keep-alive: ssh {scexao_settings['ssh_host']} dmdispzero 00 04; "
+              f"at startup, then every {scexao_settings['interval_min']:g} min in background")
+    else:
+        print("  SCExAO keep-alive: disabled")
 
     instrument_path = args.instrument_config.expanduser().resolve()
     instrument = load_config(instrument_path, simulation=False)
@@ -693,6 +822,7 @@ def run(args: argparse.Namespace) -> Path | None:
         "planned_points": npoints, "acquired_points": 0,
         "outputs": {"json": json_path.name, "fits": fits_path.name, "figure": png_path.name},
     }
+    payload["scexao_dm_keepalive"] = scexao_settings.copy()
     _atomic_json(json_path, payload)
     hardware: InstrumentHardware | None = None
     pre_mount: dict[str, float] | None = None
@@ -706,6 +836,8 @@ def run(args: argparse.Namespace) -> Path | None:
 
     def checkpoint(status: str) -> None:
         before = time.monotonic()
+        if scexao_keepalive is not None:
+            payload["scexao_dm_keepalive"] = scexao_keepalive.snapshot()
         payload["status"] = status
         payload["acquired_points"] = int(np.count_nonzero(acquired))
         if keepalive is not None:
@@ -738,6 +870,8 @@ def run(args: argparse.Namespace) -> Path | None:
             timing_totals["mount_s"] += time.monotonic()-before
 
     try:
+        if scexao_keepalive is not None:
+            scexao_keepalive.start()
         hardware = InstrumentHardware(instrument)
         for name, values in (("x", x), ("y", y)):
             lower, upper = map(float, hardware.mount_limits()[name])
@@ -758,6 +892,8 @@ def run(args: argparse.Namespace) -> Path | None:
         previous_x = previous_y = previous_piston = None
         report_every = max(1, npoints//25)
         for count, (ix, iy, ip) in enumerate(scan_points(x, y, pistons), 1):
+            if scexao_keepalive is not None:
+                scexao_keepalive.raise_if_failed()
             if ip != previous_piston:
                 before = time.monotonic()
                 hardware.set_dm(states[ip])
@@ -796,6 +932,8 @@ def run(args: argparse.Namespace) -> Path | None:
             timing_totals["settle_s"] += time.monotonic()-before
             before = time.monotonic()
             frames = _frame_cube(hardware.apapane_frames(int(NFRAMES)))
+            if scexao_keepalive is not None:
+                scexao_keepalive.raise_if_failed()
             timing_totals["camera_s"] += time.monotonic()-before
             if frames.shape != (int(NFRAMES), *dark.shape):
                 raise RuntimeError(f"APAPANE frame shape {frames.shape} != {(int(NFRAMES), *dark.shape)}")
@@ -819,6 +957,8 @@ def run(args: argparse.Namespace) -> Path | None:
                       f"elapsed={elapsed/60:.1f} min, ETA={eta/60:.1f} min")
             if count % int(CHECKPOINT_EVERY) == 0:
                 checkpoint("running")
+        if scexao_keepalive is not None:
+            scexao_keepalive.raise_if_failed()
         checkpoint("acquisition_complete")
     except BaseException as error:
         failure = error
@@ -828,6 +968,16 @@ def run(args: argparse.Namespace) -> Path | None:
         except Exception as save_error:
             payload["checkpoint_error"] = f"{type(save_error).__name__}: {save_error}"
     finally:
+        if scexao_keepalive is not None:
+            scexao_keepalive.stop()
+            try:
+                scexao_keepalive.raise_if_failed()
+            except RuntimeError as error:
+                if failure is None:
+                    failure = error
+                    payload["status"] = "failed"
+                    payload["error"] = f"{type(error).__name__}: {error}"
+            payload["scexao_dm_keepalive"] = scexao_keepalive.snapshot()
         if hardware is not None:
             restore_errors = []
             before = time.monotonic()
