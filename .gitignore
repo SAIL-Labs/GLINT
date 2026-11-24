@@ -17,6 +17,7 @@ __pycache__/
 *.png
 *.log
 *.ipynb
+!Matteo/Fiber_DM_piston_scans/analyse_fiber_dm_piston_scans.ipynb
 
 # Known large data/archive directories (safety net -- glint_paths.py routes all
 # script output to the sibling glintdata/ tree, so these should stay empty)
