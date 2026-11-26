@@ -42,7 +42,8 @@ FOCUS_START = None
 FOCUS_END = None
 FOCUS_STEP = None  # positive magnitude; start > end scans downwards
 
-SPECTRAL_BOX = (72, 77, 158, 267)  # [y0,y1,x0,x1], EXCLUSIVE upper bounds
+SPECTRAL_BOX = (72, 78, 261, 271)  # [y0,y1,x0,x1], EXCLUSIVE upper bounds
+#SPECTRAL_BOX = (72, 77, 158, 267)
 DARK_PATH = None  # None: find the saved APAPANE dark under alignment output root
 OUTPUT_ROOT = None  # None: instrument.json output_root
 OUTPUT_FOLDER = "FIber_DMfocus_piston_scan"  # exact instrument data-folder name
